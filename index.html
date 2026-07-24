@@ -36,6 +36,9 @@
   .tool-row { display:flex; gap:8px; align-items:center; }
   .tool-row .btn-tool { flex:1; }
   .spacer { flex:1; }
+  .card-style-select { padding:2px 6px; border-radius:4px; border:1px solid rgba(255,255,255,.4); background:rgba(255,255,255,.15); color:#fff; font-size:11px; margin-left:8px; cursor:pointer; }
+  .card-style-select:focus { outline:none; border-color:#fff; }
+  .card-style-select option { color:#333; background:#fff; }
   .style-row { display:flex; gap:12px; }
   .style-group { flex:1; display:flex; align-items:center; gap:8px; }
   .style-label { font-size:13px; font-weight:600; color:#555; white-space:nowrap; }
@@ -152,15 +155,29 @@
   <!-- 右侧输出 -->
   <div class="output-panel">
     <div class="output-card card-xhs">
-      <div class="output-card-header">📕 小红书笔记预览</div>
+      <div class="output-card-header">
+        📕 小红书
+        <select class="card-style-select" id="xhsCardStyle" onchange="regenSingle('xiaohongshu')" style="display:none;">
+          <option value="种草探店">种草探店</option>
+          <option value="干货攻略">干货攻略</option>
+          <option value="情绪打卡">情绪打卡</option>
+        </select>
+      </div>
       <div class="output-card-body empty" id="outputXhs">选择样例并点击生成</div>
     </div>
     <div class="output-card card-dy">
-      <div class="output-card-header">🎬 抖音口播预览</div>
+      <div class="output-card-header">
+        🎬 抖音
+        <select class="card-style-select" id="dyCardStyle" onchange="regenSingle('douyin')" style="display:none;">
+          <option value="正经解说">正经解说</option>
+          <option value="搞笑旁白">搞笑旁白</option>
+          <option value="打卡推荐">打卡推荐</option>
+        </select>
+      </div>
       <div class="output-card-body empty" id="outputDy">选择样例并点击生成</div>
     </div>
     <div class="output-card card-pyq">
-      <div class="output-card-header">💬 朋友圈预览</div>
+      <div class="output-card-header">💬 朋友圈</div>
       <div class="output-card-body empty" id="outputPyq">选择样例并点击生成</div>
     </div>
   </div>
@@ -168,6 +185,7 @@
 
 <script>
 let currentSampleId = null;
+let currentText = '';  // 保存原始讲解词，供单卡片重生用
 
 async function init() {
   try {
@@ -278,6 +296,13 @@ async function doConvert() {
     renderXhs(data.xiaohongshu);
     renderDy(data.douyin);
     renderPyq(data.pengyouquan);
+
+    // 显示卡片级别的风格下拉框，并同步全局选择
+    document.getElementById('xhsCardStyle').style.display = 'inline';
+    document.getElementById('dyCardStyle').style.display = 'inline';
+    document.getElementById('xhsCardStyle').value = document.getElementById('xhsStyle').value;
+    document.getElementById('dyCardStyle').value = document.getElementById('dyStyle').value;
+    currentText = text;
   } catch (e) {
     showError('网络错误: ' + e.message);
     resetOutputs();
@@ -319,28 +344,17 @@ function renderDy(dy) {
     return;
   }
   el.className = 'output-card-body';
-  // 解析口播中的场景行
   const narrationLines = (dy.narration || '').split('\n').filter(l => l.trim());
   const scenesHtml = narrationLines.map(line => {
     const m = line.match(/【(.+?)】(.+)/);
     if (m) return `<div class="dy-scene-line"><span class="label">🎬</span><span class="text">${escHtml(m[2].trim())}</span></div>`;
     return `<div class="dy-scene-line"><span class="label">🎬</span><span class="text">${escHtml(line.trim())}</span></div>`;
   }).join('');
-
-  // 提取第一个场景描述作为占位
-  const firstScene = narrationLines.length > 0 ? narrationLines[0].replace(/【.+?】/, '').trim() : '景区画面';
-
   el.innerHTML = `
     <div class="dy-frame">
-      <div class="dy-screen">
-        <div class="dy-scene-img">
-          <div class="dy-scene-placeholder">
-            <div class="icon">🎥</div>
-            <div>${escHtml(firstScene)}</div>
-          </div>
-        </div>
-        <div class="dy-subtitle">
-          <p class="dy-hook">🎯 ${escHtml(dy.hook || '')}</p>
+      <div class="dy-screen" style="justify-content:center; padding-top:24px;">
+        <div class="dy-subtitle" style="width:100%;">
+          ${dy.hook ? `<p class="dy-hook" style="font-size:14px;">🎯 ${escHtml(dy.hook)}</p>` : ''}
           ${scenesHtml}
           ${dy.ending ? `<p class="dy-ending">${escHtml(dy.ending)}</p>` : ''}
         </div>
@@ -357,10 +371,9 @@ function renderPyq(pyq) {
   }
   el.className = 'output-card-body';
   const images = pyq.images || [];
-  // 补齐到至少 3 个，最多 9 个
   const displayImgs = images.slice(0, 9);
   while (displayImgs.length < 3) displayImgs.push('');
-  const gridHtml = displayImgs.slice(0, 9).map(img => {
+  const gridHtml = displayImgs.map(img => {
     const label = img ? escHtml(img) : '';
     return `<div class="pyq-grid-item"><span>${label || '📷'}</span></div>`;
   }).join('');
@@ -372,7 +385,8 @@ function renderPyq(pyq) {
         <div class="pyq-name">行走的风景控</div>
       </div>
       <div class="pyq-text">${escHtml(pyq.text || '')}</div>
-      <div class="pyq-grid">${gridHtml}</div>
+      <div class="pyq-grid">${gridHtml}
+      </div>
       <div class="pyq-bar">
         <span>刚刚</span>
         <span>💬 评论</span>
@@ -391,6 +405,44 @@ function resetOutputs() {
     document.getElementById(id).className = 'output-card-body empty';
     document.getElementById(id).textContent = '选择样例并点击生成';
   });
+}
+
+async function regenSingle(platform) {
+  if (!currentText) return;
+
+  let style = '';
+  if (platform === 'xiaohongshu') {
+    style = document.getElementById('xhsCardStyle').value;
+  } else if (platform === 'douyin') {
+    style = document.getElementById('dyCardStyle').value;
+  }
+
+  // 显示加载状态
+  const elId = platform === 'xiaohongshu' ? 'outputXhs' : platform === 'douyin' ? 'outputDy' : 'outputPyq';
+  const el = document.getElementById(elId);
+  el.className = 'output-card-body';
+  el.innerHTML = '<div class="loading">⏳ 重新生成中...</div>';
+
+  try {
+    const res = await fetch('/api/convert-single', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: currentText, platform, style }),
+    });
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+
+    const content = data.content;
+    if (platform === 'xiaohongshu') renderXhs(content);
+    else if (platform === 'douyin') renderDy(content);
+    else renderPyq(content);
+
+    // 同步全局选择器
+    if (platform === 'xiaohongshu') document.getElementById('xhsStyle').value = style;
+    else if (platform === 'douyin') document.getElementById('dyStyle').value = style;
+  } catch (e) {
+    showError('单卡片生成失败: ' + e.message);
+  }
 }
 
 function showError(msg) {

@@ -3,7 +3,7 @@
 import re
 from flask import Flask, request, jsonify, send_file
 from llm import call_llm
-from prompts.convert import build_system_prompt, SAMPLE_TEXTS
+from prompts.convert import build_system_prompt, build_single_prompt, SAMPLE_TEXTS
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 
@@ -30,6 +30,10 @@ def _extract_list(text, tag):
 def parse_output(raw):
     """解析 LLM 输出为结构化数据"""
     parts = [p.strip() for p in raw.split('---')]
+    # 去掉 LLM 偶尔加的废话前言（split 后第一部分如果不是以 [ 开头就丢弃）
+    if parts and not parts[0].startswith('['):
+        parts = parts[1:]
+
     xhs_text = parts[0] if len(parts) > 0 else ''
     dy_text = parts[1] if len(parts) > 1 else ''
     pyq_text = parts[2] if len(parts) > 2 else ''
@@ -86,6 +90,50 @@ def convert():
         return jsonify({"error": f"LLM 调用失败: {str(e)}"}), 500
 
     return jsonify(parse_output(result))
+
+
+@app.route("/api/convert-single", methods=["POST"])
+def convert_single():
+    """单卡片重新生成：只生成一个平台的内容"""
+    data = request.get_json()
+    if not data or "text" not in data or "platform" not in data:
+        return jsonify({"error": "缺少 text 或 platform 字段"}), 400
+
+    text = data["text"].strip()
+    platform = data["platform"]
+    if platform not in ("xiaohongshu", "douyin", "pengyouquan"):
+        return jsonify({"error": "platform 必须是 xiaohongshu / douyin / pengyouquan"}), 400
+
+    style = data.get("style", "")
+    if not text:
+        return jsonify({"error": "text 不能为空"}), 400
+
+    try:
+        prompt = build_single_prompt(platform=platform, style=style)
+        result = call_llm(system_prompt=prompt, user_prompt=text)
+    except Exception as e:
+        return jsonify({"error": f"LLM 调用失败: {str(e)}"}), 500
+
+    # 解析单平台输出
+    if platform == "xiaohongshu":
+        content = {
+            "title": _extract(result, '标题'),
+            "body": _extract(result, '正文'),
+            "tags": _extract(result, '标签').strip('#').split('#'),
+        }
+    elif platform == "douyin":
+        content = {
+            "hook": _extract(result, '黄金3秒'),
+            "narration": _extract(result, '口播'),
+            "ending": _extract(result, '结尾'),
+        }
+    else:
+        content = {
+            "text": _extract(result, '配文'),
+            "images": _extract_list(result, '配图建议'),
+        }
+
+    return jsonify({"platform": platform, "content": content})
 
 
 if __name__ == "__main__":
