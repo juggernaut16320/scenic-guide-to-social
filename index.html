@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>景区讲解词 → 社交营销内容 一键转换</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; color: #333; min-height:100vh; }
+  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; padding:20px 32px; text-align:center; }
+  .header h1 { font-size:22px; font-weight:600; }
+  .header p { font-size:13px; opacity:.8; margin-top:4px; }
+
+  .container { max-width:1400px; margin:0 auto; padding:24px; display:flex; gap:24px; }
+  
+  /* 左侧输入区 */
+  .input-panel { flex:0 0 480px; display:flex; flex-direction:column; gap:16px; }
+  .input-panel label { font-size:14px; font-weight:600; color:#555; }
+  .input-panel select { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; background:#fff; cursor:pointer; }
+  .input-panel textarea { width:100%; height:320px; padding:14px; border:1px solid #ddd; border-radius:8px; font-size:14px; line-height:1.7; resize:vertical; font-family:inherit; }
+  .input-panel textarea:focus, .input-panel select:focus { outline:none; border-color:#667eea; box-shadow:0 0 0 3px rgba(102,126,234,.15); }
+  .btn { padding:12px 24px; border:none; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; transition:all .2s; }
+  .btn-primary { background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; }
+  .btn-primary:hover { opacity:.9; transform:translateY(-1px); }
+  .btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+  .char-count { font-size:12px; color:#999; text-align:right; }
+
+  /* 右侧输出区 */
+  .output-panel { flex:1; display:flex; gap:16px; }
+  .output-card { flex:1; background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.06); overflow:hidden; display:flex; flex-direction:column; }
+  .output-card-header { padding:14px 18px; font-weight:600; font-size:14px; color:#fff; }
+  .card-xhs .output-card-header { background:linear-gradient(135deg, #ff6b6b, #ee5a24); }
+  .card-dy .output-card-header { background:linear-gradient(135deg, #2d3436, #636e72); }
+  .card-pyq .output-card-header { background:linear-gradient(135deg, #2ecc71, #27ae60); }
+  .output-card-body { flex:1; padding:18px; font-size:14px; line-height:1.8; white-space:pre-wrap; overflow-y:auto; max-height:70vh; }
+  .output-card-body.empty { color:#ccc; text-align:center; padding-top:60px; font-size:13px; }
+
+  .loading { text-align:center; color:#667eea; padding:40px; font-size:14px; }
+  .error { color:#e74c3c; background:#fdf0ef; padding:12px; border-radius:8px; font-size:13px; }
+
+  @media (max-width:900px) {
+    .container { flex-direction:column; }
+    .input-panel { flex:none; width:100%; }
+    .output-panel { flex-direction:column; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>景区讲解词 → 社交营销内容 一键转换</h1>
+  <p>输入官方讲解词，AI 自动生成小红书种草文 / 短视频口播脚本 / 朋友圈配文</p>
+</div>
+
+<div class="container">
+  <!-- 左侧输入 -->
+  <div class="input-panel">
+    <div>
+      <label>📋 选择样例（或直接输入）</label>
+      <select id="sampleSelect" onchange="loadSample()">
+        <option value="">-- 选择一个样例讲解词 --</option>
+      </select>
+    </div>
+    <div>
+      <label>📝 景区讲解词原文</label>
+      <textarea id="inputText" placeholder="在此粘贴或输入景区官方讲解词……"></textarea>
+      <div class="char-count"><span id="charCount">0</span> 字</div>
+    </div>
+    <button class="btn btn-primary" id="submitBtn" onclick="doConvert()">🚀 一键转换</button>
+    <div id="errorMsg" class="error" style="display:none;"></div>
+  </div>
+
+  <!-- 右侧输出 -->
+  <div class="output-panel">
+    <div class="output-card card-xhs">
+      <div class="output-card-header">📕 小红书种草文</div>
+      <div class="output-card-body empty" id="outputXhs">等待生成……</div>
+    </div>
+    <div class="output-card card-dy">
+      <div class="output-card-header">🎬 短视频口播脚本</div>
+      <div class="output-card-body empty" id="outputDy">等待生成……</div>
+    </div>
+    <div class="output-card card-pyq">
+      <div class="output-card-header">💬 朋友圈配文</div>
+      <div class="output-card-body empty" id="outputPyq">等待生成……</div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function init() {
+  try {
+    const res = await fetch('/api/samples');
+    const samples = await res.json();
+    const select = document.getElementById('sampleSelect');
+    samples.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.title;
+      opt.dataset.text = s.text;
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('加载样例失败:', e);
+  }
+
+  document.getElementById('inputText').addEventListener('input', function() {
+    document.getElementById('charCount').textContent = this.value.length;
+  });
+}
+
+function loadSample() {
+  const select = document.getElementById('sampleSelect');
+  const opt = select.selectedOptions[0];
+  if (opt && opt.dataset.text) {
+    document.getElementById('inputText').value = opt.dataset.text;
+    document.getElementById('charCount').textContent = opt.dataset.text.length;
+    document.getElementById('errorMsg').style.display = 'none';
+  }
+}
+
+async function doConvert() {
+  const text = document.getElementById('inputText').value.trim();
+  if (!text) {
+    showError('请先输入讲解词内容');
+    return;
+  }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 生成中……';
+  document.getElementById('errorMsg').style.display = 'none';
+
+  // 三个输出区显示加载状态
+  ['outputXhs', 'outputDy', 'outputPyq'].forEach(id => {
+    document.getElementById(id).className = 'output-card-body loading';
+    document.getElementById(id).textContent = 'AI 正在生成……';
+  });
+
+  try {
+    const res = await fetch('/api/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      showError(data.error);
+      resetOutputs();
+      return;
+    }
+
+    renderOutputs(data.parts);
+  } catch (e) {
+    showError('网络错误: ' + e.message);
+    resetOutputs();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 一键转换';
+  }
+}
+
+function renderOutputs(parts) {
+  const ids = ['outputXhs', 'outputDy', 'outputPyq'];
+  ids.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (parts[i]) {
+      el.className = 'output-card-body';
+      el.textContent = parts[i].trim();
+    } else {
+      el.className = 'output-card-body empty';
+      el.textContent = '暂无内容';
+    }
+  });
+}
+
+function resetOutputs() {
+  ['outputXhs', 'outputDy', 'outputPyq'].forEach(id => {
+    document.getElementById(id).className = 'output-card-body empty';
+    document.getElementById(id).textContent = '等待生成……';
+  });
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = '❌ ' + msg;
+  el.style.display = 'block';
+}
+
+init();
+</script>
+
+</body>
+</html>
