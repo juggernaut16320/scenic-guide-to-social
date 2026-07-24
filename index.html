@@ -14,26 +14,82 @@
   .container { max-width:1400px; margin:0 auto; padding:24px; display:flex; gap:24px; }
   
   /* 左侧输入区 */
-  .input-panel { flex:0 0 480px; display:flex; flex-direction:column; gap:16px; }
+  .input-panel { flex:0 0 480px; display:flex; flex-direction:column; gap:14px; }
   .input-panel label { font-size:14px; font-weight:600; color:#555; }
-  .input-panel select { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; background:#fff; cursor:pointer; }
-  .input-panel textarea { width:100%; height:320px; padding:14px; border:1px solid #ddd; border-radius:8px; font-size:14px; line-height:1.7; resize:vertical; font-family:inherit; }
-  .input-panel textarea:focus, .input-panel select:focus { outline:none; border-color:#667eea; box-shadow:0 0 0 3px rgba(102,126,234,.15); }
-  .btn { padding:12px 24px; border:none; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; transition:all .2s; }
-  .btn-primary { background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; }
+  .input-panel textarea { width:100%; height:300px; padding:14px; border:1px solid #ddd; border-radius:8px; font-size:14px; line-height:1.7; resize:vertical; font-family:inherit; }
+  .input-panel textarea:focus { outline:none; border-color:#667eea; box-shadow:0 0 0 3px rgba(102,126,234,.15); }
+  .input-hint { font-size:12px; color:#aaa; margin-top:2px; line-height:1.6; }
+  .btn { padding:10px 18px; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; transition:all .2s; }
+  .btn-primary { background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; padding:13px 24px; font-size:15px; }
   .btn-primary:hover { opacity:.9; transform:translateY(-1px); }
   .btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+  .btn-tool { background:#fff; color:#555; border:1px solid #ddd; }
+  .btn-tool:hover { background:#f0f0f0; }
+  .btn-tool.active { background:#667eea; color:#fff; border-color:#667eea; }
+  .sample-tags { display:flex; flex-wrap:wrap; gap:8px; }
+  .sample-tag { padding:6px 14px; border-radius:20px; font-size:13px; cursor:pointer; border:1.5px solid #e0e0e0; background:#fff; color:#666; transition:all .15s; white-space:nowrap; }
+  .sample-tag:hover { border-color:#667eea; color:#667eea; background:#f5f7ff; }
+  .sample-tag.active { background:#667eea; color:#fff; border-color:#667eea; }
   .char-count { font-size:12px; color:#999; text-align:right; }
+  .char-count.warn { color:#e67e22; }
+  .char-count.good { color:#27ae60; }
+  .tool-row { display:flex; gap:8px; align-items:center; }
+  .tool-row .btn-tool { flex:1; }
+  .spacer { flex:1; }
+  .style-row { display:flex; gap:12px; }
+  .style-group { flex:1; display:flex; align-items:center; gap:8px; }
+  .style-label { font-size:13px; font-weight:600; color:#555; white-space:nowrap; }
+  .style-group select { flex:1; padding:8px 10px; border:1px solid #ddd; border-radius:8px; font-size:13px; background:#fff; cursor:pointer; }
+  .style-group select:focus { outline:none; border-color:#667eea; }
 
   /* 右侧输出区 */
-  .output-panel { flex:1; display:flex; gap:16px; }
+  .output-panel { flex:1; display:flex; gap:12px; }
+  
+  /* ── 通用 output 卡片 ── */
   .output-card { flex:1; background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.06); overflow:hidden; display:flex; flex-direction:column; }
-  .output-card-header { padding:14px 18px; font-weight:600; font-size:14px; color:#fff; }
+  .output-card-header { padding:12px 16px; font-weight:600; font-size:13px; color:#fff; }
   .card-xhs .output-card-header { background:linear-gradient(135deg, #ff6b6b, #ee5a24); }
   .card-dy .output-card-header { background:linear-gradient(135deg, #2d3436, #636e72); }
-  .card-pyq .output-card-header { background:linear-gradient(135deg, #2ecc71, #27ae60); }
-  .output-card-body { flex:1; padding:18px; font-size:14px; line-height:1.8; white-space:pre-wrap; overflow-y:auto; max-height:70vh; }
-  .output-card-body.empty { color:#ccc; text-align:center; padding-top:60px; font-size:13px; }
+  .card-pyq .output-card-header { background:linear-gradient(135deg, #4facfe, #00f2fe); }
+  .output-card-body { flex:1; padding:14px; overflow-y:auto; max-height:70vh; }
+  .output-card-body.empty { display:flex; align-items:center; justify-content:center; color:#ccc; font-size:13px; }
+
+  /* ── 小红书卡片 ── */
+  .xhs-card { background:#fff; border-radius:10px; overflow:hidden; }
+  .xhs-card .author { display:flex; align-items:center; gap:10px; padding-bottom:10px; }
+  .xhs-card .avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #ff6b6b, #ee5a24); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; flex-shrink:0; }
+  .xhs-card .author-name { font-size:13px; font-weight:600; color:#333; }
+  .xhs-card .author-date { font-size:11px; color:#999; }
+  .xhs-card .xhs-title { font-size:15px; font-weight:700; color:#333; margin-bottom:8px; line-height:1.5; }
+  .xhs-card .xhs-body { font-size:13px; color:#444; line-height:1.8; margin-bottom:10px; white-space:pre-wrap; }
+  .xhs-card .xhs-tags { display:flex; flex-wrap:wrap; gap:6px; }
+  .xhs-card .xhs-tag { font-size:11px; color:#5173c3; background:#eef1ff; padding:2px 8px; border-radius:10px; }
+
+  /* ── 抖音竖屏 ── */
+  .dy-frame { width:100%; max-width:240px; margin:0 auto; background:#000; border-radius:16px; overflow:hidden; position:relative; }
+  .dy-screen { aspect-ratio:9/16; background:#1a1a2e; padding:16px 12px; display:flex; flex-direction:column; justify-content:flex-end; position:relative; }
+  .dy-scene-img { position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; }
+  .dy-scene-placeholder { text-align:center; color:#fff; font-size:13px; padding:20px; line-height:1.6; }
+  .dy-scene-placeholder .icon { font-size:32px; margin-bottom:8px; }
+  .dy-subtitle { position:relative; z-index:1; background:rgba(0,0,0,.7); border-radius:8px; padding:10px; margin-top:6px; }
+  .dy-subtitle p { color:#fff; font-size:12px; line-height:1.6; margin:0; }
+  .dy-hook { border-left:2px solid #fe2c55; padding-left:8px; }
+  .dy-ending { text-align:center; color:#fe2c55; font-weight:600; }
+  .dy-scene-line { display:flex; gap:6px; margin-bottom:4px; }
+  .dy-scene-line .label { color:#aaa; font-size:11px; min-width:28px; text-align:center; }
+  .dy-scene-line .text { color:#ddd; font-size:12px; flex:1; }
+
+  /* ── 朋友圈 ── */
+  .pyq-card { background:#fff; border-radius:8px; }
+  .pyq-author { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .pyq-avatar { width:36px; height:36px; border-radius:4px; background:linear-gradient(135deg, #4facfe, #00f2fe); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; flex-shrink:0; }
+  .pyq-name { font-size:13px; font-weight:600; color:#4facfe; }
+  .pyq-text { font-size:14px; color:#333; line-height:1.7; margin-bottom:10px; }
+  .pyq-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:3px; }
+  .pyq-grid-item { aspect-ratio:1; background:#f0f0f0; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#999; text-align:center; padding:4px; line-height:1.4; }
+  .pyq-grid-item span { display:block; }
+  .pyq-bar { display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid #f0f0f0; font-size:11px; color:#999; }
+  .pyq-bar span { cursor:default; }
 
   .loading { text-align:center; color:#667eea; padding:40px; font-size:14px; }
   .error { color:#e74c3c; background:#fdf0ef; padding:12px; border-radius:8px; font-size:13px; }
@@ -42,6 +98,7 @@
     .container { flex-direction:column; }
     .input-panel { flex:none; width:100%; }
     .output-panel { flex-direction:column; }
+    .dy-frame { max-width:200px; }
   }
 </style>
 </head>
@@ -56,15 +113,37 @@
   <!-- 左侧输入 -->
   <div class="input-panel">
     <div>
-      <label>📋 选择样例（或直接输入）</label>
-      <select id="sampleSelect" onchange="loadSample()">
-        <option value="">-- 选择一个样例讲解词 --</option>
-      </select>
+      <label>📋 选择样例</label>
+      <div class="sample-tags" id="sampleTags"></div>
     </div>
     <div>
       <label>📝 景区讲解词原文</label>
       <textarea id="inputText" placeholder="在此粘贴或输入景区官方讲解词……"></textarea>
-      <div class="char-count"><span id="charCount">0</span> 字</div>
+      <div class="tool-row" style="margin-top:6px;">
+        <button class="btn btn-tool" onclick="pasteText()" title="从剪贴板粘贴">📋 粘贴</button>
+        <button class="btn btn-tool" onclick="clearText()">🗑 清空</button>
+        <span class="spacer"></span>
+        <span class="char-count" id="charCount">0 字</span>
+      </div>
+      <div class="input-hint">💡 建议输入 300-800 字官方讲解词，包含景点背景、历史数据、核心亮点效果最佳</div>
+    </div>
+    <div class="style-row">
+      <div class="style-group">
+        <span class="style-label">📕 小红书</span>
+        <select id="xhsStyle">
+          <option value="种草探店">种草探店</option>
+          <option value="干货攻略">干货攻略</option>
+          <option value="情绪打卡">情绪打卡</option>
+        </select>
+      </div>
+      <div class="style-group">
+        <span class="style-label">🎬 抖音</span>
+        <select id="dyStyle">
+          <option value="正经解说">正经解说</option>
+          <option value="搞笑旁白">搞笑旁白</option>
+          <option value="打卡推荐">打卡推荐</option>
+        </select>
+      </div>
     </div>
     <button class="btn btn-primary" id="submitBtn" onclick="doConvert()">🚀 一键转换</button>
     <div id="errorMsg" class="error" style="display:none;"></div>
@@ -73,50 +152,92 @@
   <!-- 右侧输出 -->
   <div class="output-panel">
     <div class="output-card card-xhs">
-      <div class="output-card-header">📕 小红书种草文</div>
-      <div class="output-card-body empty" id="outputXhs">等待生成……</div>
+      <div class="output-card-header">📕 小红书笔记预览</div>
+      <div class="output-card-body empty" id="outputXhs">选择样例并点击生成</div>
     </div>
     <div class="output-card card-dy">
-      <div class="output-card-header">🎬 短视频口播脚本</div>
-      <div class="output-card-body empty" id="outputDy">等待生成……</div>
+      <div class="output-card-header">🎬 抖音口播预览</div>
+      <div class="output-card-body empty" id="outputDy">选择样例并点击生成</div>
     </div>
     <div class="output-card card-pyq">
-      <div class="output-card-header">💬 朋友圈配文</div>
-      <div class="output-card-body empty" id="outputPyq">等待生成……</div>
+      <div class="output-card-header">💬 朋友圈预览</div>
+      <div class="output-card-body empty" id="outputPyq">选择样例并点击生成</div>
     </div>
   </div>
 </div>
 
 <script>
+let currentSampleId = null;
+
 async function init() {
   try {
     const res = await fetch('/api/samples');
     const samples = await res.json();
-    const select = document.getElementById('sampleSelect');
+    const container = document.getElementById('sampleTags');
+
+    // 按 category 分组去重
+    const seen = new Set();
     samples.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.title;
-      opt.dataset.text = s.text;
-      select.appendChild(opt);
+      if (seen.has(s.category)) return;
+      seen.add(s.category);
+
+      const tag = document.createElement('span');
+      tag.className = 'sample-tag';
+      tag.textContent = s.category;
+      tag.title = s.title;
+      tag.onclick = () => selectSample(s, tag);
+      container.appendChild(tag);
     });
   } catch (e) {
     console.error('加载样例失败:', e);
   }
 
-  document.getElementById('inputText').addEventListener('input', function() {
-    document.getElementById('charCount').textContent = this.value.length;
-  });
+  document.getElementById('inputText').addEventListener('input', updateCharCount);
 }
 
-function loadSample() {
-  const select = document.getElementById('sampleSelect');
-  const opt = select.selectedOptions[0];
-  if (opt && opt.dataset.text) {
-    document.getElementById('inputText').value = opt.dataset.text;
-    document.getElementById('charCount').textContent = opt.dataset.text.length;
-    document.getElementById('errorMsg').style.display = 'none';
+function selectSample(sample, tagEl) {
+  // 切换 tag 的 active 样式
+  document.querySelectorAll('.sample-tag').forEach(t => t.classList.remove('active'));
+  if (currentSampleId === sample.id) {
+    // 再次点击同一分类 → 取消选择，清空内容
+    currentSampleId = null;
+    clearText();
+    return;
   }
+  tagEl.classList.add('active');
+  currentSampleId = sample.id;
+  document.getElementById('inputText').value = sample.text;
+  updateCharCount();
+  document.getElementById('errorMsg').style.display = 'none';
+}
+
+function updateCharCount() {
+  const len = document.getElementById('inputText').value.length;
+  const el = document.getElementById('charCount');
+  el.textContent = len + ' 字';
+  el.className = 'char-count';
+  if (len >= 300 && len <= 800) el.classList.add('good');
+  else if (len > 0) el.classList.add('warn');
+}
+
+async function pasteText() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      document.getElementById('inputText').value = text;
+      updateCharCount();
+    }
+  } catch {
+    showError('无法读取剪贴板，请手动粘贴');
+  }
+}
+
+function clearText() {
+  document.getElementById('inputText').value = '';
+  updateCharCount();
+  currentSampleId = null;
+  document.querySelectorAll('.sample-tag').forEach(t => t.classList.remove('active'));
+  document.getElementById('errorMsg').style.display = 'none';
 }
 
 async function doConvert() {
@@ -131,7 +252,6 @@ async function doConvert() {
   btn.textContent = '⏳ 生成中……';
   document.getElementById('errorMsg').style.display = 'none';
 
-  // 三个输出区显示加载状态
   ['outputXhs', 'outputDy', 'outputPyq'].forEach(id => {
     document.getElementById(id).className = 'output-card-body loading';
     document.getElementById(id).textContent = 'AI 正在生成……';
@@ -141,7 +261,11 @@ async function doConvert() {
     const res = await fetch('/api/convert', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({
+        text,
+        xhs_style: document.getElementById('xhsStyle').value,
+        dy_style: document.getElementById('dyStyle').value,
+      })
     });
     const data = await res.json();
 
@@ -151,7 +275,9 @@ async function doConvert() {
       return;
     }
 
-    renderOutputs(data.parts);
+    renderXhs(data.xiaohongshu);
+    renderDy(data.douyin);
+    renderPyq(data.pengyouquan);
   } catch (e) {
     showError('网络错误: ' + e.message);
     resetOutputs();
@@ -161,24 +287,109 @@ async function doConvert() {
   }
 }
 
-function renderOutputs(parts) {
-  const ids = ['outputXhs', 'outputDy', 'outputPyq'];
-  ids.forEach((id, i) => {
-    const el = document.getElementById(id);
-    if (parts[i]) {
-      el.className = 'output-card-body';
-      el.textContent = parts[i].trim();
-    } else {
-      el.className = 'output-card-body empty';
-      el.textContent = '暂无内容';
-    }
-  });
+function renderXhs(xhs) {
+  const el = document.getElementById('outputXhs');
+  if (!xhs || (!xhs.title && !xhs.body)) {
+    el.className = 'output-card-body empty';
+    el.textContent = '暂无内容';
+    return;
+  }
+  el.className = 'output-card-body';
+  const tagsHtml = (xhs.tags || []).filter(t => t.trim()).map(t => `<span class="xhs-tag">#${t.trim()}</span>`).join('');
+  el.innerHTML = `
+    <div class="xhs-card">
+      <div class="author">
+        <div class="avatar">🌸</div>
+        <div>
+          <div class="author-name">旅行种草机</div>
+          <div class="author-date">刚刚</div>
+        </div>
+      </div>
+      <div class="xhs-title">${escHtml(xhs.title || '')}</div>
+      <div class="xhs-body">${escHtml(xhs.body || '')}</div>
+      <div class="xhs-tags">${tagsHtml}</div>
+    </div>`;
+}
+
+function renderDy(dy) {
+  const el = document.getElementById('outputDy');
+  if (!dy || (!dy.hook && !dy.narration)) {
+    el.className = 'output-card-body empty';
+    el.textContent = '暂无内容';
+    return;
+  }
+  el.className = 'output-card-body';
+  // 解析口播中的场景行
+  const narrationLines = (dy.narration || '').split('\n').filter(l => l.trim());
+  const scenesHtml = narrationLines.map(line => {
+    const m = line.match(/【(.+?)】(.+)/);
+    if (m) return `<div class="dy-scene-line"><span class="label">🎬</span><span class="text">${escHtml(m[2].trim())}</span></div>`;
+    return `<div class="dy-scene-line"><span class="label">🎬</span><span class="text">${escHtml(line.trim())}</span></div>`;
+  }).join('');
+
+  // 提取第一个场景描述作为占位
+  const firstScene = narrationLines.length > 0 ? narrationLines[0].replace(/【.+?】/, '').trim() : '景区画面';
+
+  el.innerHTML = `
+    <div class="dy-frame">
+      <div class="dy-screen">
+        <div class="dy-scene-img">
+          <div class="dy-scene-placeholder">
+            <div class="icon">🎥</div>
+            <div>${escHtml(firstScene)}</div>
+          </div>
+        </div>
+        <div class="dy-subtitle">
+          <p class="dy-hook">🎯 ${escHtml(dy.hook || '')}</p>
+          ${scenesHtml}
+          ${dy.ending ? `<p class="dy-ending">${escHtml(dy.ending)}</p>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderPyq(pyq) {
+  const el = document.getElementById('outputPyq');
+  if (!pyq || !pyq.text) {
+    el.className = 'output-card-body empty';
+    el.textContent = '暂无内容';
+    return;
+  }
+  el.className = 'output-card-body';
+  const images = pyq.images || [];
+  // 补齐到至少 3 个，最多 9 个
+  const displayImgs = images.slice(0, 9);
+  while (displayImgs.length < 3) displayImgs.push('');
+  const gridHtml = displayImgs.slice(0, 9).map(img => {
+    const label = img ? escHtml(img) : '';
+    return `<div class="pyq-grid-item"><span>${label || '📷'}</span></div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="pyq-card">
+      <div class="pyq-author">
+        <div class="pyq-avatar">🏔</div>
+        <div class="pyq-name">行走的风景控</div>
+      </div>
+      <div class="pyq-text">${escHtml(pyq.text || '')}</div>
+      <div class="pyq-grid">${gridHtml}</div>
+      <div class="pyq-bar">
+        <span>刚刚</span>
+        <span>💬 评论</span>
+      </div>
+    </div>`;
+}
+
+function escHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
 }
 
 function resetOutputs() {
   ['outputXhs', 'outputDy', 'outputPyq'].forEach(id => {
     document.getElementById(id).className = 'output-card-body empty';
-    document.getElementById(id).textContent = '等待生成……';
+    document.getElementById(id).textContent = '选择样例并点击生成';
   });
 }
 

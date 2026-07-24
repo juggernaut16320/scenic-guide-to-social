@@ -1,10 +1,56 @@
 """Flask 后端 —— 只有一个接口 + 静态页面"""
 
+import re
 from flask import Flask, request, jsonify, send_file
 from llm import call_llm
-from prompts.convert import SYSTEM_PROMPT, SAMPLE_TEXTS
+from prompts.convert import build_system_prompt, SAMPLE_TEXTS
 
 app = Flask(__name__, static_folder=".", static_url_path="")
+
+# ── 结构化解析 ──────────────────────────────────────────────
+
+def _extract(text, tag):
+    """从文本中提取 [tag] 后面的内容，直到下一个 [ 或文本结束"""
+    pattern = rf'\[{tag}\]\s*(.+?)(?=\n\[|\Z)'
+    m = re.search(pattern, text, re.DOTALL)
+    return m.group(1).strip() if m else ''
+
+def _extract_list(text, tag):
+    """从文本中提取 [tag] 后每行去掉编号前缀，返回列表"""
+    section = _extract(text, tag)
+    if not section:
+        return []
+    lines = []
+    for line in section.strip().split('\n'):
+        line = re.sub(r'^\d+[\.\、\s]+', '', line).strip()
+        if line:
+            lines.append(line)
+    return lines
+
+def parse_output(raw):
+    """解析 LLM 输出为结构化数据"""
+    parts = [p.strip() for p in raw.split('---')]
+    xhs_text = parts[0] if len(parts) > 0 else ''
+    dy_text = parts[1] if len(parts) > 1 else ''
+    pyq_text = parts[2] if len(parts) > 2 else ''
+
+    return {
+        "raw": raw,
+        "xiaohongshu": {
+            "title": _extract(xhs_text, '标题'),
+            "body": _extract(xhs_text, '正文'),
+            "tags": _extract(xhs_text, '标签').strip('#').split('#'),
+        },
+        "douyin": {
+            "hook": _extract(dy_text, '黄金3秒'),
+            "narration": _extract(dy_text, '口播'),
+            "ending": _extract(dy_text, '结尾'),
+        },
+        "pengyouquan": {
+            "text": _extract(pyq_text, '配文'),
+            "images": _extract_list(pyq_text, '配图建议'),
+        },
+    }
 
 
 @app.route("/")
@@ -30,19 +76,16 @@ def convert():
     if not text:
         return jsonify({"error": "text 不能为空"}), 400
 
+    xhs_style = data.get("xhs_style", "种草探店")
+    dy_style = data.get("dy_style", "正经解说")
+
     try:
-        result = call_llm(system_prompt=SYSTEM_PROMPT, user_prompt=text)
+        prompt = build_system_prompt(xhs_style=xhs_style, dy_style=dy_style)
+        result = call_llm(system_prompt=prompt, user_prompt=text)
     except Exception as e:
         return jsonify({"error": f"LLM 调用失败: {str(e)}"}), 500
 
-    # 按 --- 分隔三种内容
-    parts = [p.strip() for p in result.split("---")]
-
-    return jsonify({
-        "raw": result,
-        "parts": parts,
-        "count": len(parts),
-    })
+    return jsonify(parse_output(result))
 
 
 if __name__ == "__main__":
