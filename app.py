@@ -1,9 +1,10 @@
 """Flask 后端 —— 只有一个接口 + 静态页面"""
 
 import re
+import json
 from flask import Flask, request, jsonify, send_file
 from llm import call_llm
-from prompts.convert import build_system_prompt, build_single_prompt, SAMPLE_TEXTS
+from prompts.convert import build_system_prompt, build_single_prompt, ENTITY_PROMPT, SAMPLE_TEXTS
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 
@@ -134,6 +135,41 @@ def convert_single():
         }
 
     return jsonify({"platform": platform, "content": content})
+
+
+@app.route("/api/extract-entities", methods=["POST"])
+def extract_entities():
+    """从讲解词中提取实体（人名、地名、建筑等）"""
+    data = request.get_json()
+    if not data or "text" not in data:
+        return jsonify({"error": "缺少 text 字段"}), 400
+
+    text = data["text"].strip()
+    if len(text) < 10:
+        return jsonify({"entities": []})
+
+    try:
+        result = call_llm(system_prompt=ENTITY_PROMPT, user_prompt=text)
+        result = result.strip()
+        # 去掉可能的 markdown 包裹
+        if result.startswith("```"):
+            result = re.sub(r"```\w*\n?", "", result).rstrip("```").strip()
+        entities = json.loads(result)
+        # 校验
+        raw = entities.get("entities", entities if isinstance(entities, list) else [])
+        if isinstance(raw, list):
+            raw = [e for e in raw if isinstance(e, dict) and "name" in e and "type" in e]
+        # 去重
+        seen = set()
+        clean = []
+        for e in raw:
+            key = (e["name"], e["type"])
+            if key not in seen:
+                seen.add(key)
+                clean.append(e)
+        return jsonify({"entities": clean})
+    except Exception as e:
+        return jsonify({"error": f"实体提取失败: {str(e)}"}), 500
 
 
 if __name__ == "__main__":

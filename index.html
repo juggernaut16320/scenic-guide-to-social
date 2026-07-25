@@ -39,6 +39,26 @@
   .card-style-select { padding:2px 6px; border-radius:4px; border:1px solid rgba(255,255,255,.4); background:rgba(255,255,255,.15); color:#fff; font-size:11px; margin-left:8px; cursor:pointer; }
   .card-style-select:focus { outline:none; border-color:#fff; }
   .card-style-select option { color:#333; background:#fff; }
+  [contenteditable="true"] { outline:none; cursor:text; transition: background .2s; border-radius:4px; padding:2px 4px; margin:-2px -4px; }
+  [contenteditable="true"]:hover { background:rgba(254,44,85,.06); }
+  [contenteditable="true"]:focus { background:rgba(254,44,85,.12); }
+  .card-body-wrap { position:relative; }
+  .card-loading-overlay { position:absolute; inset:0; display:flex; align-items:flex-start; justify-content:center; padding-top:12px; background:rgba(255,255,255,.7); backdrop-filter:blur(1px); z-index:2; border-radius:12px; }
+  .card-loading-overlay .loading-text { background:var(--primary); color:#fff; padding:4px 14px; border-radius:20px; font-size:12px; }
+  .entity-section { margin-top:12px; }
+  .entity-label { font-size:12px; color:#999; margin-bottom:6px; }
+  .entity-badges { display:flex; flex-wrap:wrap; gap:6px; }
+  .entity-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:12px; border:1px solid; cursor:default; }
+  .entity-badge.type-人名 { color:#e74c3c; border-color:#e74c3c; background:rgba(231,76,60,.08); }
+  .entity-badge.type-地名 { color:#2ecc71; border-color:#2ecc71; background:rgba(46,204,113,.08); }
+  .entity-badge.type-建筑名 { color:#3498db; border-color:#3498db; background:rgba(52,152,219,.08); }
+  .entity-badge.type-年代 { color:#9b59b6; border-color:#9b59b6; background:rgba(155,89,182,.08); }
+  .entity-badge.type-文物 { color:#e67e22; border-color:#e67e22; background:rgba(230,126,34,.08); }
+  .entity-badge.type-自然景观 { color:#1abc9c; border-color:#1abc9c; background:rgba(26,188,156,.08); }
+  .entity-badge.loading-badge { color:#bbb; border-color:#ccc; animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .entity-hl { color:#2980b9; font-weight:700; cursor:pointer; border-bottom:1px dashed rgba(41,128,185,.4); }
+  .entity-hl:hover { background:rgba(41,128,185,.1); }
   .style-row { display:flex; gap:12px; }
   .style-group { flex:1; display:flex; align-items:center; gap:8px; }
   .style-label { font-size:13px; font-weight:600; color:#555; white-space:nowrap; }
@@ -148,6 +168,10 @@
         </select>
       </div>
     </div>
+    <div class="entity-section" id="entitySection" style="display:none;">
+      <div class="entity-label">🔍 识别实体</div>
+      <div class="entity-badges" id="entityBadges"></div>
+    </div>
     <button class="btn btn-primary" id="submitBtn" onclick="doConvert()">🚀 一键转换</button>
     <div id="errorMsg" class="error" style="display:none;"></div>
   </div>
@@ -186,6 +210,8 @@
 <script>
 let currentSampleId = null;
 let currentText = '';  // 保存原始讲解词，供单卡片重生用
+let currentEntities = [];  // 当前提取的实体列表
+let firstSample = null;   // 第一个样例，用于默认加载
 
 async function init() {
   try {
@@ -196,6 +222,7 @@ async function init() {
     // 按 category 分组去重
     const seen = new Set();
     samples.forEach(s => {
+      if (!firstSample) firstSample = s;  // 记住第一个样例
       if (seen.has(s.category)) return;
       seen.add(s.category);
 
@@ -206,6 +233,18 @@ async function init() {
       tag.onclick = () => selectSample(s, tag);
       container.appendChild(tag);
     });
+
+    // 默认选中第一个样例
+    if (firstSample) {
+      const firstTag = container.querySelector('.sample-tag');
+      if (firstTag) {
+        firstTag.classList.add('active');
+        currentSampleId = firstSample.id;
+        document.getElementById('inputText').value = firstSample.text;
+        updateCharCount();
+        extractEntities(firstSample.text);
+      }
+    }
   } catch (e) {
     console.error('加载样例失败:', e);
   }
@@ -226,7 +265,7 @@ function selectSample(sample, tagEl) {
   currentSampleId = sample.id;
   document.getElementById('inputText').value = sample.text;
   updateCharCount();
-  document.getElementById('errorMsg').style.display = 'none';
+  extractEntities(sample.text);
 }
 
 function updateCharCount() {
@@ -322,17 +361,19 @@ function renderXhs(xhs) {
   el.className = 'output-card-body';
   const tagsHtml = (xhs.tags || []).filter(t => t.trim()).map(t => `<span class="xhs-tag">#${t.trim()}</span>`).join('');
   el.innerHTML = `
-    <div class="xhs-card">
-      <div class="author">
-        <div class="avatar">🌸</div>
-        <div>
-          <div class="author-name">旅行种草机</div>
-          <div class="author-date">刚刚</div>
+    <div class="card-body-wrap" id="wrapXhs">
+      <div class="xhs-card">
+        <div class="author">
+          <div class="avatar">🌸</div>
+          <div>
+            <div class="author-name">旅行种草机</div>
+            <div class="author-date">刚刚</div>
+          </div>
         </div>
+        <div class="xhs-title" contenteditable="true">${highlightText(xhs.title || '')}</div>
+        <div class="xhs-body" contenteditable="true">${highlightText(xhs.body || '')}</div>
+        <div class="xhs-tags">${tagsHtml}</div>
       </div>
-      <div class="xhs-title">${escHtml(xhs.title || '')}</div>
-      <div class="xhs-body">${escHtml(xhs.body || '')}</div>
-      <div class="xhs-tags">${tagsHtml}</div>
     </div>`;
 }
 
@@ -347,16 +388,18 @@ function renderDy(dy) {
   const narrationLines = (dy.narration || '').split('\n').filter(l => l.trim());
   const scenesHtml = narrationLines.map(line => {
     const m = line.match(/【(.+?)】(.+)/);
-    if (m) return `<div class="dy-scene-line"><span class="label">🎬</span><span class="text">${escHtml(m[2].trim())}</span></div>`;
-    return `<div class="dy-scene-line"><span class="label">🎬</span><span class="text">${escHtml(line.trim())}</span></div>`;
+    if (m) return `<div class="dy-scene-line"><span class="label">🎬</span><span class="text" contenteditable="true">${highlightText(m[2].trim())}</span></div>`;
+    return `<div class="dy-scene-line"><span class="label">🎬</span><span class="text" contenteditable="true">${highlightText(line.trim())}</span></div>`;
   }).join('');
   el.innerHTML = `
-    <div class="dy-frame">
-      <div class="dy-screen" style="justify-content:center; padding-top:24px;">
-        <div class="dy-subtitle" style="width:100%;">
-          ${dy.hook ? `<p class="dy-hook" style="font-size:14px;">🎯 ${escHtml(dy.hook)}</p>` : ''}
-          ${scenesHtml}
-          ${dy.ending ? `<p class="dy-ending">${escHtml(dy.ending)}</p>` : ''}
+    <div class="card-body-wrap" id="wrapDy">
+      <div class="dy-frame">
+        <div class="dy-screen" style="justify-content:center; padding-top:24px;">
+          <div class="dy-subtitle" style="width:100%;">
+            ${dy.hook ? `<p class="dy-hook" style="font-size:14px;">🎯 <span contenteditable="true">${highlightText(dy.hook)}</span></p>` : ''}
+            ${scenesHtml}
+            ${dy.ending ? `<p class="dy-ending"><span contenteditable="true">${highlightText(dy.ending)}</span></p>` : ''}
+          </div>
         </div>
       </div>
     </div>`;
@@ -379,17 +422,19 @@ function renderPyq(pyq) {
   }).join('');
 
   el.innerHTML = `
-    <div class="pyq-card">
-      <div class="pyq-author">
-        <div class="pyq-avatar">🏔</div>
-        <div class="pyq-name">行走的风景控</div>
-      </div>
-      <div class="pyq-text">${escHtml(pyq.text || '')}</div>
-      <div class="pyq-grid">${gridHtml}
-      </div>
-      <div class="pyq-bar">
-        <span>刚刚</span>
-        <span>💬 评论</span>
+    <div class="card-body-wrap" id="wrapPyq">
+      <div class="pyq-card">
+        <div class="pyq-author">
+          <div class="pyq-avatar">🏔</div>
+          <div class="pyq-name">行走的风景控</div>
+        </div>
+        <div class="pyq-text" contenteditable="true">${highlightText(pyq.text || '')}</div>
+        <div class="pyq-grid">${gridHtml}
+        </div>
+        <div class="pyq-bar">
+          <span>刚刚</span>
+          <span>💬 评论</span>
+        </div>
       </div>
     </div>`;
 }
@@ -405,6 +450,59 @@ function resetOutputs() {
     document.getElementById(id).className = 'output-card-body empty';
     document.getElementById(id).textContent = '选择样例并点击生成';
   });
+  currentEntities = [];
+  document.getElementById('entitySection').style.display = 'none';
+}
+
+// ── 实体提取 & 高亮 ──
+
+async function extractEntities(text) {
+  const section = document.getElementById('entitySection');
+  const badges = document.getElementById('entityBadges');
+
+  // 显示加载态
+  section.style.display = 'block';
+  badges.innerHTML = '<span class="entity-badge loading-badge">⏳ 识别中...</span>';
+  currentEntities = [];
+
+  try {
+    const res = await fetch('/api/extract-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (data.error || !data.entities) {
+      section.style.display = 'none';
+      return;
+    }
+    currentEntities = data.entities;
+    if (currentEntities.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+    badges.innerHTML = currentEntities.map(e => 
+      `<span class="entity-badge type-${e.type}">${escHtml(e.name)}</span>`
+    ).join('');
+    section.style.display = 'block';
+  } catch (e) {
+    section.style.display = 'none';
+    console.error('实体提取失败:', e);
+  }
+}
+
+function highlightText(text) {
+  if (!currentEntities.length) return escHtml(text);
+  // 按实体名长度降序排列，避免短名覆盖长名
+  const sorted = [...currentEntities].sort((a, b) => b.name.length - a.name.length);
+  let html = escHtml(text);
+  for (const e of sorted) {
+    const escaped = escHtml(e.name);
+    html = html.split(escaped).join(
+      `<span class="entity-hl" data-entity="${escHtml(e.name)}" data-type="${e.type}">${escaped}</span>`
+    );
+  }
+  return html;
 }
 
 async function regenSingle(platform) {
@@ -417,11 +515,13 @@ async function regenSingle(platform) {
     style = document.getElementById('dyCardStyle').value;
   }
 
-  // 显示加载状态
-  const elId = platform === 'xiaohongshu' ? 'outputXhs' : platform === 'douyin' ? 'outputDy' : 'outputPyq';
-  const el = document.getElementById(elId);
-  el.className = 'output-card-body';
-  el.innerHTML = '<div class="loading">⏳ 重新生成中...</div>';
+  // overlay 加载态，不影响其他卡片，也不破坏已有内容
+  const wrapId = platform === 'xiaohongshu' ? 'wrapXhs' : platform === 'douyin' ? 'wrapDy' : 'wrapPyq';
+  const wrap = document.getElementById(wrapId);
+  const overlay = document.createElement('div');
+  overlay.className = 'card-loading-overlay';
+  overlay.innerHTML = '<span class="loading-text">⏳ 重新生成中</span>';
+  wrap.appendChild(overlay);
 
   try {
     const res = await fetch('/api/convert-single', {
@@ -430,18 +530,18 @@ async function regenSingle(platform) {
       body: JSON.stringify({ text: currentText, platform, style }),
     });
     const data = await res.json();
-    if (data.error) { showError(data.error); return; }
+    if (data.error) { showError(data.error); overlay.remove(); return; }
 
     const content = data.content;
     if (platform === 'xiaohongshu') renderXhs(content);
     else if (platform === 'douyin') renderDy(content);
     else renderPyq(content);
 
-    // 同步全局选择器
     if (platform === 'xiaohongshu') document.getElementById('xhsStyle').value = style;
     else if (platform === 'douyin') document.getElementById('dyStyle').value = style;
   } catch (e) {
     showError('单卡片生成失败: ' + e.message);
+    overlay.remove();
   }
 }
 
