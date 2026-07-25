@@ -6,6 +6,8 @@ from flask import request, jsonify, render_template
 
 from api import app
 from api.services import preprocess_input, build_graph_data
+from api.images import get_spot_images, get_avatars
+from api.guides import get_guide
 from core.llm import call_llm
 from core.parsers import (
     parse_convert_json, parse_single_output, parse_and_clean_entities,
@@ -32,6 +34,34 @@ def studio():
 @app.route("/api/samples", methods=["GET"])
 def get_samples():
     return jsonify(SAMPLE_TEXTS)
+
+
+@app.route("/api/spot-guide", methods=["GET"])
+def spot_guide():
+    """按地名返回预存的讲解词原文（缺失则现生成并缓存）"""
+    name = request.args.get("name", "").strip()
+    try:
+        return jsonify(get_guide(name))
+    except Exception as e:
+        return jsonify({"name": name, "guide": "", "category": "", "error": str(e)})
+
+
+@app.route("/api/spot-images", methods=["GET"])
+def spot_images():
+    """按地名返回 6 张真实配图 + 一批头像（百度图片，磁盘缓存）"""
+    name = request.args.get("name", "").strip()
+    if not name:
+        return jsonify({"images": [], "avatars": []})
+    try:
+        images = get_spot_images(name, 6)
+    except Exception as e:
+        print(f"[warn] spot images failed: {e}")
+        images = []
+    try:
+        avatars = get_avatars(12)
+    except Exception:
+        avatars = []
+    return jsonify({"images": images, "avatars": avatars})
 
 
 @app.route("/api/convert", methods=["POST"])

@@ -10,7 +10,7 @@
 
 <header class="topbar">
   <a class="topbar-back" href="/">← 景点星图</a>
-  <span class="topbar-brand">ScenicFly 生成台</span>
+  <span class="topbar-brand">文旅转译局</span>
   <span class="topbar-sub">讲解词 → 小红书 · 抖音 · 朋友圈</span>
 </header>
 
@@ -18,13 +18,8 @@
   <!-- 左侧参数面板 -->
   <aside class="side-panel">
     <div class="panel-section">
-      <div class="panel-label">样例模板</div>
-      <div class="sample-tags" id="sampleTags"></div>
-    </div>
-
-    <div class="panel-section">
       <div class="panel-label">讲解词原文</div>
-      <textarea id="inputText" placeholder="输入城市名自动推荐景点，输入景点名自动补全讲解词，也可直接粘贴 300-800 字官方讲解词"></textarea>
+      <textarea id="inputText" placeholder="从「景点星图」点选景点，自动带入该景点的讲解词原文并开始；也可直接输入景点名或粘贴讲解词原文"></textarea>
       <div class="tool-row">
         <span class="char-count" id="charCount">0 字</span>
         <button class="btn btn-ghost" onclick="pasteText()">粘贴</button>
@@ -79,55 +74,40 @@
     </div>
   </aside>
 
-  <!-- 右侧预览区 -->
+  <!-- 右侧预览区：手机 App 预览 -->
   <main class="preview-area" id="previewArea">
-    <div class="preview-toolbar">
-      <span class="pt-title">三平台预览</span>
-      <div class="view-toggle">
-        <button class="view-btn active" id="viewCard" onclick="setView('card')">卡片视图</button>
-        <button class="view-btn" id="viewFilm" onclick="setView('film')">明信片视图</button>
+    <div class="stage-wrap">
+    <div class="stage">
+      <!-- 平台切换标签 -->
+      <div class="plat-tabs" id="platTabs">
+        <button class="plat-tab" data-plat="xiaohongshu" onclick="switchPlat('xiaohongshu')" disabled><span class="pt-dot xhs"></span>小红书</button>
+        <button class="plat-tab" data-plat="douyin" onclick="switchPlat('douyin')" disabled><span class="pt-dot dy"></span>抖音</button>
+        <button class="plat-tab" data-plat="pengyouquan" onclick="switchPlat('pengyouquan')" disabled><span class="pt-dot pyq"></span>朋友圈</button>
+      </div>
+
+      <!-- 手机框 -->
+      <div class="phone" id="phone">
+        <div class="phone-screen" id="phoneScreen">
+          <div class="ps-placeholder" id="psPlaceholder">
+            <div class="ps-ph-icon">📱</div>
+            <div class="ps-ph-title">选择样例，点「生成内容」</div>
+            <div class="ps-ph-sub">将逐个生成 小红书 · 抖音 · 朋友圈<br>真实配图 · 可滑动 · 可评论</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部：进度 / 继续下一个 / 本篇操作 -->
+      <div class="stage-foot">
+        <div class="gen-progress" id="genProgress"></div>
+        <div class="phone-actions" id="phoneActions" style="display:none;">
+          <button class="btn btn-action" onclick="actionRefine('shorten')">缩短</button>
+          <button class="btn btn-action" onclick="actionRefine('vivid')">更生动</button>
+          <button class="btn btn-action" onclick="actionRegen()">重写本篇</button>
+          <button class="btn btn-action btn-copy" onclick="actionCopy()">复制文案</button>
+        </div>
       </div>
     </div>
-    <div class="output-panel" id="outputPanel">
-      <div class="output-col" id="colXhs">
-        <div class="output-col-header xhs-header">小红书</div>
-        <div class="output-col-body empty">
-          <div class="preview-empty">选择样例并点击生成</div>
-        </div>
-        <div class="action-row">
-          <button class="btn btn-action" onclick="actionRefine('shorten')">缩短</button>
-          <button class="btn btn-action" onclick="actionRefine('formal')">更正式</button>
-          <button class="btn btn-action" onclick="actionRefine('vivid')">更生动</button>
-          <button class="btn btn-action" onclick="actionRegen()">重写</button>
-          <button class="btn btn-action btn-copy" onclick="actionCopy()">复制</button>
-        </div>
-      </div>
-      <div class="output-col" id="colDy">
-        <div class="output-col-header dy-header">抖音</div>
-        <div class="output-col-body empty">
-          <div class="preview-empty">选择样例并点击生成</div>
-        </div>
-        <div class="action-row">
-          <button class="btn btn-action" onclick="actionRefine('shorten')">缩短</button>
-          <button class="btn btn-action" onclick="actionRefine('formal')">更正式</button>
-          <button class="btn btn-action" onclick="actionRefine('vivid')">更生动</button>
-          <button class="btn btn-action" onclick="actionRegen()">重写</button>
-          <button class="btn btn-action btn-copy" onclick="actionCopy()">复制</button>
-        </div>
-      </div>
-      <div class="output-col" id="colPyq">
-        <div class="output-col-header pyq-header">朋友圈</div>
-        <div class="output-col-body empty">
-          <div class="preview-empty">选择样例并点击生成</div>
-        </div>
-        <div class="action-row">
-          <button class="btn btn-action" onclick="actionRefine('shorten')">缩短</button>
-          <button class="btn btn-action" onclick="actionRefine('formal')">更正式</button>
-          <button class="btn btn-action" onclick="actionRefine('vivid')">更生动</button>
-          <button class="btn btn-action" onclick="actionRegen()">重写</button>
-          <button class="btn btn-action btn-copy" onclick="actionCopy()">复制</button>
-        </div>
-      </div>
+    <aside class="stage-fx" id="stageFx"></aside>
     </div>
   </main>
 </div>

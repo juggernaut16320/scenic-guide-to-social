@@ -1,257 +1,216 @@
-/* static/js/main.js —— 初始化、样例切换、转换流程 */
+/* static/js/main.js —— 初始化 + 星图带入讲解词 + 自动串生成三平台 + 图片按需拉取 */
 
-let currentSampleId = null;
-let firstSample = null;
-
-// 把「内容风格」原生 select 增强为自定义暗色下拉（保留 id/value 与 onchange 行为）
+/* ── 自定义暗色下拉（内容风格）── */
 function enhanceStyleSelects() {
-  document.querySelectorAll('.style-group select').forEach(sel => {
-    const wrap = document.createElement('div');
-    wrap.className = 'cust-select';
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.className = 'cs-trigger';
-    const label = document.createElement('span');
-    label.className = 'cs-label';
-    const caret = document.createElement('span');
-    caret.className = 'cs-caret';
+  document.querySelectorAll('.style-group select').forEach(function (sel) {
+    var wrap = document.createElement('div'); wrap.className = 'cust-select';
+    var trigger = document.createElement('button'); trigger.type = 'button'; trigger.className = 'cs-trigger';
+    var label = document.createElement('span'); label.className = 'cs-label';
+    var caret = document.createElement('span'); caret.className = 'cs-caret';
     trigger.append(label, caret);
-    const menu = document.createElement('div');
-    menu.className = 'cs-menu';
-
-    const syncLabel = () => {
-      const o = sel.options[sel.selectedIndex];
-      label.textContent = o ? o.textContent : '';
-    };
-    const markSel = () => {
-      [...menu.children].forEach(it => it.classList.toggle('sel', it.dataset.value === sel.value));
-    };
-
-    [...sel.options].forEach(opt => {
-      const item = document.createElement('div');
-      item.className = 'cs-item';
-      item.textContent = opt.textContent;
-      item.dataset.value = opt.value;
-      item.addEventListener('click', e => {
+    var menu = document.createElement('div'); menu.className = 'cs-menu';
+    var syncLabel = function () { var o = sel.options[sel.selectedIndex]; label.textContent = o ? o.textContent : ''; };
+    var markSel = function () { [].forEach.call(menu.children, function (it) { it.classList.toggle('sel', it.dataset.value === sel.value); }); };
+    [].forEach.call(sel.options, function (opt) {
+      var item = document.createElement('div'); item.className = 'cs-item';
+      item.textContent = opt.textContent; item.dataset.value = opt.value;
+      item.addEventListener('click', function (e) {
         e.stopPropagation();
-        if (sel.value !== opt.value) {
-          sel.value = opt.value;
-          sel.dispatchEvent(new Event('change', { bubbles: true })); // 触发原 onchange→regenSingle
-        }
-        syncLabel(); markSel();
-        wrap.classList.remove('open');
+        if (sel.value !== opt.value) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+        syncLabel(); markSel(); wrap.classList.remove('open');
       });
       menu.appendChild(item);
     });
-
-    trigger.addEventListener('click', e => {
+    trigger.addEventListener('click', function (e) {
       e.stopPropagation();
-      const willOpen = !wrap.classList.contains('open');
-      document.querySelectorAll('.cust-select.open').forEach(w => w.classList.remove('open'));
+      var willOpen = !wrap.classList.contains('open');
+      document.querySelectorAll('.cust-select.open').forEach(function (w) { w.classList.remove('open'); });
       wrap.classList.toggle('open', willOpen);
     });
-    // 外部代码改了 select.value 时保持显示同步
-    sel.addEventListener('change', () => { syncLabel(); markSel(); });
-
+    sel.addEventListener('change', function () { syncLabel(); markSel(); });
     sel.style.display = 'none';
     sel.parentNode.insertBefore(wrap, sel.nextSibling);
     wrap.append(trigger, menu);
     syncLabel(); markSel();
   });
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.cust-select.open').forEach(w => w.classList.remove('open'));
+  document.addEventListener('click', function () {
+    document.querySelectorAll('.cust-select.open').forEach(function (w) { w.classList.remove('open'); });
   });
 }
 
-async function init() {
+function init() {
   enhanceStyleSelects();
-  try {
-    const res = await fetch('/api/samples');
-    const samples = await res.json();
-    const container = document.getElementById('sampleTags');
-
-    const seen = new Set();
-    samples.forEach(s => {
-      if (!firstSample) firstSample = s;
-      if (seen.has(s.category)) return;
-      seen.add(s.category);
-
-      const tag = document.createElement('span');
-      tag.className = 'sample-tag';
-      tag.textContent = s.category;
-      tag.title = s.title;
-      tag.onclick = () => selectSample(s, tag);
-      container.appendChild(tag);
-    });
-
-    if (firstSample) {
-      const firstTag = container.querySelector('.sample-tag');
-      if (firstTag) {
-        firstTag.classList.add('active');
-        currentSampleId = firstSample.id;
-        document.getElementById('inputText').value = firstSample.text;
-        updateCharCount();
-        extractEntities(firstSample.text);
-      }
-    }
-
-    // 从景点星图跳转而来：?spot=景点名 → 自动带入并生成
-    // 限制长度，避免恶意分享链接静默触发大量 LLM 调用
-    const spot = (new URLSearchParams(location.search).get('spot') || '').trim();
-    if (spot && spot.length <= 40) {
-      document.querySelectorAll('.sample-tag').forEach(t => t.classList.remove('active'));
-      currentSampleId = null;
-      document.getElementById('inputText').value = spot;
-      updateCharCount();
-      setTimeout(doConvert, 300);
-    }
-  } catch (e) {
-    console.error('加载样例失败:', e);
-  }
-
+  renderFx();
+  var spot = (new URLSearchParams(location.search).get('spot') || '').trim();
+  if (spot && spot.length <= 40) startFromSpot(spot);   // 从星图带景点进来
   document.getElementById('inputText').addEventListener('input', updateCharCount);
 }
 
-// 视图切换：卡片视图 / 明信片(胶片)视图
-function setView(mode) {
-  const area = document.getElementById('previewArea');
-  const cardBtn = document.getElementById('viewCard');
-  const filmBtn = document.getElementById('viewFilm');
-  const film = mode === 'film';
-  area.classList.toggle('filmstrip', film);
-  cardBtn.classList.toggle('active', !film);
-  filmBtn.classList.toggle('active', film);
-}
-
-function selectSample(sample, tagEl) {
-  document.querySelectorAll('.sample-tag').forEach(t => t.classList.remove('active'));
-  if (currentSampleId === sample.id) {
-    currentSampleId = null;
-    clearText();
-    return;
-  }
-  tagEl.classList.add('active');
-  currentSampleId = sample.id;
-  document.getElementById('inputText').value = sample.text;
-  updateCharCount();
-  extractEntities(sample.text);
-}
-
 function updateCharCount() {
-  const len = document.getElementById('inputText').value.length;
-  const el = document.getElementById('charCount');
-  el.textContent = len + ' 字';
-  el.className = 'char-count';
+  var len = document.getElementById('inputText').value.length;
+  var el = document.getElementById('charCount');
+  el.textContent = len + ' 字'; el.className = 'char-count';
   if (len >= 300 && len <= 800) el.classList.add('good');
   else if (len > 0) el.classList.add('warn');
 }
 
 async function pasteText() {
-  try {
-    const text = await navigator.clipboard.readText();
-    if (text) {
-      document.getElementById('inputText').value = text;
-      updateCharCount();
-    }
-  } catch {
-    showError('无法读取剪贴板，请手动粘贴');
-  }
+  try { var t = await navigator.clipboard.readText(); if (t) { document.getElementById('inputText').value = t; updateCharCount(); } }
+  catch (e) { showError('无法读取剪贴板，请手动粘贴'); }
 }
 
 function clearText() {
   document.getElementById('inputText').value = '';
   updateCharCount();
-  currentSampleId = null;
-  document.querySelectorAll('.sample-tag').forEach(t => t.classList.remove('active'));
   document.getElementById('errorMsg').style.display = 'none';
-  currentEntities = [];
-  document.getElementById('entitySection').style.display = 'none';
 }
 
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+/* ── 取讲解词原文（星图景点 / 手动景点名）── */
+async function fetchGuide(name) {
+  try { return await (await fetch('/api/spot-guide?name=' + encodeURIComponent(name))).json(); }
+  catch (e) { return { guide: name, category: '' }; }
+}
+
+async function startFromSpot(name) {
+  var box = document.getElementById('inputText');
+  box.value = '正在载入「' + name + '」的讲解词原文…';
+  var g = await fetchGuide(name);
+  spotName = name;
+  currentText = g.guide || name;
+  box.value = currentText; updateCharCount();
+  await generateAll();
+}
+
+/* ── 主流程：点「生成内容」──*/
 async function doConvert() {
-  const text = document.getElementById('inputText').value.trim();
-  if (!text) {
-    showError('请先输入讲解词内容');
-    return;
-  }
-
-  const btn = document.getElementById('submitBtn');
-  btn.disabled = true;
+  var text = document.getElementById('inputText').value.trim();
+  if (!text) { showError('请先从「景点星图」选景点，或输入景点名'); return; }
+  var btn = document.getElementById('submitBtn');
   document.getElementById('errorMsg').style.display = 'none';
-  currentEntities = [];
-  document.getElementById('entitySection').style.display = 'none';
-
-  // 短文本预处理
-  let guideText = text;
-  if (text.length < 100) {
-    btn.textContent = '识别输入中...';
-    try {
-      const preRes = await fetch('/api/preprocess', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-      const preData = await preRes.json();
-      if (preData.error) {
-        showError('预处理失败: ' + preData.error);
-        btn.disabled = false; btn.textContent = '生成内容'; return;
-      }
-      guideText = preData.guide_text;
-      if (preData.input_type !== 'guide_direct' && preData.input_type !== 'guide_detected') {
-        document.getElementById('inputText').value = guideText;
-        updateCharCount();
-        extractEntities(guideText);
-      }
-      if (preData.matched_category) {
-        highlightCategoryTag(preData.matched_category);
-      }
-    } catch (e) {
-      showError('预处理网络错误: ' + e.message);
-      btn.disabled = false; btn.textContent = '生成内容'; return;
-    }
+  if (text.length < 60) {
+    // 视为景点名 → 取预存讲解词原文
+    btn.disabled = true; btn.textContent = '载入讲解词…';
+    var g = await fetchGuide(text);
+    spotName = text; currentText = g.guide || text;
+    document.getElementById('inputText').value = currentText; updateCharCount();
+  } else {
+    currentText = text; spotName = spotName || text.slice(0, 8);
   }
-
-  btn.textContent = 'AI 生成中...';
-
-  // 初始化三列为 loading 状态
-  ['colXhs', 'colDy', 'colPyq'].forEach(id => {
-    const body = document.getElementById(id).querySelector('.output-col-body');
-    body.innerHTML = '<div class="loading-state">AI 生成中<div class="neon-pipe"><span></span></div></div>';
-    body.classList.remove('empty');
-  });
-
-  try {
-    const res = await fetch('/api/convert', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: guideText,
-        xhs_style: document.getElementById('xhsStyle').value,
-        dy_style: document.getElementById('dyStyle').value,
-        pyq_style: document.getElementById('pyqStyle').value,
-        custom_style: document.getElementById('customStyle').value,
-      })
-    });
-    const data = await res.json();
-    if (data.error) { showError(data.error); resetOutputs(); return; }
-
-    renderXhs(data.xiaohongshu);
-    renderDy(data.douyin);
-    renderPyq(data.pengyouquan);
-    currentText = guideText;
-
-    if (text.length >= 100) extractEntities(guideText);
-  } catch (e) {
-    showError('网络错误: ' + e.message);
-    resetOutputs();
-  } finally {
-    btn.disabled = false; btn.textContent = '生成内容';
-  }
+  await generateAll();
 }
 
-// 高亮匹配的分类标签
-function highlightCategoryTag(category) {
-  document.querySelectorAll('.sample-tag').forEach(t => {
-    t.classList.toggle('active', t.textContent === category);
-  });
+/* ── 自动串生成三平台（生成完一个自动下一个）── */
+async function generateAll() {
+  resetGen();
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = '生成中...';
+  showInitialLoading();                // 仅首篇前一个极简 spinner
+  renderFx();
+  fetchImages();                       // 并行拉图，文字先出、图后淡入
+  for (var i = 0; i < PLATFORMS.length; i++) {
+    var ok = await genPlatform(PLATFORMS[i]);   // 好了自动显示；生成下一篇时保留当前画面
+    if (!ok) break;
+    updateAfterGen();
+  }
+  btn.disabled = false; btn.textContent = '重新生成';
+}
+
+function readStyle(plat) {
+  if (plat === 'xiaohongshu') return document.getElementById('xhsStyle').value;
+  if (plat === 'douyin') return document.getElementById('dyStyle').value;
+  return document.getElementById('pyqStyle').value;
+}
+
+function resetGen() {
+  genData = { xiaohongshu: null, douyin: null, pengyouquan: null };
+  spotImages = []; currentPlat = null;
+  document.getElementById('phoneActions').style.display = 'none';
+  document.getElementById('genProgress').textContent = '';
+  updateTabs(); renderFx();
+}
+
+// 仅首篇尚无内容时用一个极简 spinner；之后生成下一篇时保留当前画面，好了直接切
+function showInitialLoading() {
+  var s = document.getElementById('phoneScreen');
+  s.className = 'phone-screen loading';
+  s.innerHTML = '<div class="ps-loading"><div class="neon-ring"></div></div>';
+}
+function setBusy(on) {
+  var s = document.getElementById('phoneScreen');
+  if (s) s.classList.toggle('busy', on);
+}
+
+async function genPlatform(plat) {
+  currentPlat = plat;
+  try {
+    var res = await fetch('/api/convert-single', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: currentText, platform: plat, style: readStyle(plat), custom_style: document.getElementById('customStyle').value })
+    });
+    var data = await res.json();
+    if (data.error) { showError(data.error); setBusy(false); return false; }
+    genData[plat] = { content: data.content, meta: buildMeta(plat), guide: currentText };
+    renderPlatform(plat);
+    return true;
+  } catch (e) { showError('生成失败: ' + e.message); setBusy(false); return false; }
+}
+
+function updateAfterGen() {
+  var done = PLATFORMS.filter(function (p) { return genData[p]; }).length;
+  var pg = document.getElementById('genProgress');
+  pg.textContent = done >= 3 ? '三平台已全部生成 ✓ 点上方标签切换' : ('已生成 ' + done + ' / 3');
+  updateTabs();
+}
+
+async function fetchImages() {
+  if (!spotName) return;
+  try {
+    var r = await fetch('/api/spot-images?name=' + encodeURIComponent(spotName));
+    var d = await r.json();
+    if (d.images && d.images.length) spotImages = d.images;
+    if (d.avatars && d.avatars.length) avatars = d.avatars;
+    renderFx();
+    if (currentPlat && genData[currentPlat]) renderPlatform(currentPlat);  // 图片淡入
+  } catch (e) { /* 配图失败不阻断文案 */ }
+}
+
+/* ── 本篇操作 ── */
+function extractPlatText(plat) {
+  var c = genData[plat].content;
+  if (plat === 'xiaohongshu') return (c.title || '') + '\n' + (c.body || '') + '\n' + ((c.tags || []).map(function (t) { return '#' + t; }).join(' '));
+  if (plat === 'douyin') return (c.hook || '') + '\n' + (c.narration || '') + '\n' + (c.ending || '');
+  return c.text || '';
+}
+
+function actionRegen() { if (currentPlat) { setBusy(true); genPlatform(currentPlat).then(updateAfterGen); } }
+
+function regenSingle(plat) {
+  plat = plat || currentPlat;
+  if (!plat || !genData[plat]) return;   // 仅对已生成的平台重生成
+  currentPlat = plat; setBusy(true); genPlatform(plat);
+}
+
+function actionRefine(action) {
+  if (!currentPlat || !genData[currentPlat]) return;
+  var plat = currentPlat;
+  setBusy(true);
+  fetch('/api/refine', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: extractPlatText(plat), platform: plat, action: action })
+  }).then(function (r) { return r.json(); }).then(function (data) {
+    if (data.error) { showError(data.error); setBusy(false); return; }
+    genData[plat].content = data.content; renderPlatform(plat);
+  }).catch(function (e) { showError('操作失败: ' + e.message); setBusy(false); });
+}
+
+function actionCopy() {
+  if (!currentPlat || !genData[currentPlat]) return;
+  navigator.clipboard.writeText(extractPlatText(currentPlat)).then(function () {
+    var b = document.querySelector('.btn-copy');
+    if (b) { var o = b.textContent; b.textContent = '已复制'; setTimeout(function () { b.textContent = o; }, 1500); }
+  }).catch(function () { showError('复制失败'); });
 }
 
 init();
