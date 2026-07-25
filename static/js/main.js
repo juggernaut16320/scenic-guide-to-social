@@ -3,7 +3,68 @@
 let currentSampleId = null;
 let firstSample = null;
 
+// 把「内容风格」原生 select 增强为自定义暗色下拉（保留 id/value 与 onchange 行为）
+function enhanceStyleSelects() {
+  document.querySelectorAll('.style-group select').forEach(sel => {
+    const wrap = document.createElement('div');
+    wrap.className = 'cust-select';
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'cs-trigger';
+    const label = document.createElement('span');
+    label.className = 'cs-label';
+    const caret = document.createElement('span');
+    caret.className = 'cs-caret';
+    trigger.append(label, caret);
+    const menu = document.createElement('div');
+    menu.className = 'cs-menu';
+
+    const syncLabel = () => {
+      const o = sel.options[sel.selectedIndex];
+      label.textContent = o ? o.textContent : '';
+    };
+    const markSel = () => {
+      [...menu.children].forEach(it => it.classList.toggle('sel', it.dataset.value === sel.value));
+    };
+
+    [...sel.options].forEach(opt => {
+      const item = document.createElement('div');
+      item.className = 'cs-item';
+      item.textContent = opt.textContent;
+      item.dataset.value = opt.value;
+      item.addEventListener('click', e => {
+        e.stopPropagation();
+        if (sel.value !== opt.value) {
+          sel.value = opt.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true })); // 触发原 onchange→regenSingle
+        }
+        syncLabel(); markSel();
+        wrap.classList.remove('open');
+      });
+      menu.appendChild(item);
+    });
+
+    trigger.addEventListener('click', e => {
+      e.stopPropagation();
+      const willOpen = !wrap.classList.contains('open');
+      document.querySelectorAll('.cust-select.open').forEach(w => w.classList.remove('open'));
+      wrap.classList.toggle('open', willOpen);
+    });
+    // 外部代码改了 select.value 时保持显示同步
+    sel.addEventListener('change', () => { syncLabel(); markSel(); });
+
+    sel.style.display = 'none';
+    sel.parentNode.insertBefore(wrap, sel.nextSibling);
+    wrap.append(trigger, menu);
+    syncLabel(); markSel();
+  });
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.cust-select.open').forEach(w => w.classList.remove('open'));
+  });
+}
+
 async function init() {
+  enhanceStyleSelects();
   try {
     const res = await fetch('/api/samples');
     const samples = await res.json();
@@ -33,11 +94,33 @@ async function init() {
         extractEntities(firstSample.text);
       }
     }
+
+    // 从景点星图跳转而来：?spot=景点名 → 自动带入并生成
+    // 限制长度，避免恶意分享链接静默触发大量 LLM 调用
+    const spot = (new URLSearchParams(location.search).get('spot') || '').trim();
+    if (spot && spot.length <= 40) {
+      document.querySelectorAll('.sample-tag').forEach(t => t.classList.remove('active'));
+      currentSampleId = null;
+      document.getElementById('inputText').value = spot;
+      updateCharCount();
+      setTimeout(doConvert, 300);
+    }
   } catch (e) {
     console.error('加载样例失败:', e);
   }
 
   document.getElementById('inputText').addEventListener('input', updateCharCount);
+}
+
+// 视图切换：卡片视图 / 明信片(胶片)视图
+function setView(mode) {
+  const area = document.getElementById('previewArea');
+  const cardBtn = document.getElementById('viewCard');
+  const filmBtn = document.getElementById('viewFilm');
+  const film = mode === 'film';
+  area.classList.toggle('filmstrip', film);
+  cardBtn.classList.toggle('active', !film);
+  filmBtn.classList.toggle('active', film);
 }
 
 function selectSample(sample, tagEl) {
@@ -132,7 +215,7 @@ async function doConvert() {
   // 初始化三列为 loading 状态
   ['colXhs', 'colDy', 'colPyq'].forEach(id => {
     const body = document.getElementById(id).querySelector('.output-col-body');
-    body.innerHTML = '<div class="loading-state">生成中...</div>';
+    body.innerHTML = '<div class="loading-state">AI 生成中<div class="neon-pipe"><span></span></div></div>';
     body.classList.remove('empty');
   });
 

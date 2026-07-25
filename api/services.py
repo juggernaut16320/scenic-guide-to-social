@@ -6,7 +6,9 @@ import random
 from typing import Optional
 from core.llm import call_llm
 from prompts.convert import PREPROCESS_PROMPT, GUIDE_GENERATION_PROMPT
-from prompts.data import CITY_TO_ATTRACTIONS, FAMOUS_ATTRACTIONS, CATEGORY_KEYWORDS
+from prompts.data import (
+    CITY_TO_ATTRACTIONS, FAMOUS_ATTRACTIONS, CATEGORY_KEYWORDS, ATLAS_CITIES,
+)
 
 
 def _is_known_city(text: str) -> Optional[str]:
@@ -24,6 +26,23 @@ def _match_category(spot_name: str) -> str:
             if kw in spot_name:
                 return category
     return "古建筑类"
+
+
+def build_graph_data() -> dict:
+    """从真实城市→景点数据构建景点星图的节点与连线（供 atlas 首页使用）"""
+    nodes = [{"id": "center", "type": "center", "name": "中国景点",
+              "emoji": "🧭", "w": 3}]
+    edges = []
+    for city, emo in ATLAS_CITIES.items():
+        cid = "city:" + city
+        nodes.append({"id": cid, "type": "city", "name": city, "emoji": emo, "w": 2})
+        edges.append(["center", cid])
+        for spot in CITY_TO_ATTRACTIONS.get(city, []):
+            sid = "spot:" + spot
+            nodes.append({"id": sid, "type": "spot", "name": spot,
+                          "cat": _match_category(spot), "w": 1.1})
+            edges.append([cid, sid])
+    return {"nodes": nodes, "edges": edges}
 
 
 def preprocess_input(text: str) -> dict:

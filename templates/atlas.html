@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScenicFly · 景点星图</title>
+<link rel="stylesheet" href="/static/css/atlas.css">
+</head>
+<body>
+
+<div class="atmos" aria-hidden="true"></div>
+<canvas id="graph"></canvas>
+<div class="grain" aria-hidden="true"></div>
+
+<span class="corner tl" aria-hidden="true"></span>
+<span class="corner tr" aria-hidden="true"></span>
+<span class="corner bl" aria-hidden="true"></span>
+<span class="corner br" aria-hidden="true"></span>
+
+<div class="nav">
+  <div class="kick">ScenicFly · Scenic Atlas</div>
+  <h1>景点星图 <em>· 星旅台</em></h1>
+  <div class="rule"></div>
+  <p>拖拽节点 · 滚轮缩放 · 点击景点，让它长出社交文案</p>
+</div>
+
+<div class="topright">
+  <div class="search-wrap">
+    <input id="search" type="text" placeholder="搜城市或景点…" autocomplete="off">
+  </div>
+  <a class="nav-btn" href="/studio">进入生成台 →</a>
+</div>
+
+<div class="legend">
+  <div class="lt">Categories · 图例</div>
+  <div id="legendItems"></div>
+</div>
+
+<div class="toolbar">
+  <button id="btnReset">复位</button>
+  <button id="btnPause">静止</button>
+</div>
+
+<div class="statusline"><b id="statN">0</b> 景点 · <b id="statE">0</b> 城市 · 点亮一座，开始创作</div>
+
+<div class="tip" id="tip"></div>
+
+<aside class="panel" id="panel">
+  <button class="pclose" id="pclose">✕</button>
+  <div class="pthumb" id="pThumb"></div>
+  <div class="pcat" id="pCat"><span class="dot" id="pDot"></span><span id="pCatText"></span></div>
+  <h2 id="pName"></h2>
+  <div id="pBody"></div>
+</aside>
+
+<script>window.GRAPH_DATA = {{ graph_data|tojson }};</script>
+<script src="/static/js/atlas.js"></script>
+</body>
+</html>

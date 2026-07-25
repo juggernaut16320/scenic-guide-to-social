@@ -5,7 +5,7 @@ import json
 from flask import request, jsonify, render_template
 
 from api import app
-from api.services import preprocess_input
+from api.services import preprocess_input, build_graph_data
 from core.llm import call_llm
 from core.parsers import (
     parse_convert_json, parse_single_output, parse_and_clean_entities,
@@ -19,6 +19,13 @@ from prompts.data import SAMPLE_TEXTS
 
 @app.route("/")
 def index():
+    """首页：景点星图（graph_data 由 Jinja 的 |tojson 安全注入）"""
+    return render_template("atlas.html", graph_data=build_graph_data())
+
+
+@app.route("/studio")
+def studio():
+    """生成台：讲解词转三平台内容"""
     return render_template("index.html")
 
 

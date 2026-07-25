@@ -9,8 +9,9 @@
 <body>
 
 <header class="topbar">
-  <span class="topbar-brand">ScenicFly</span>
-  <span class="topbar-sub">景区讲解词转社交营销内容</span>
+  <a class="topbar-back" href="/">← 景点星图</a>
+  <span class="topbar-brand">ScenicFly 生成台</span>
+  <span class="topbar-sub">讲解词 → 小红书 · 抖音 · 朋友圈</span>
 </header>
 
 <div class="main-layout">
@@ -80,6 +81,13 @@
 
   <!-- 右侧预览区 -->
   <main class="preview-area" id="previewArea">
+    <div class="preview-toolbar">
+      <span class="pt-title">三平台预览</span>
+      <div class="view-toggle">
+        <button class="view-btn active" id="viewCard" onclick="setView('card')">卡片视图</button>
+        <button class="view-btn" id="viewFilm" onclick="setView('film')">明信片视图</button>
+      </div>
+    </div>
     <div class="output-panel" id="outputPanel">
       <div class="output-col" id="colXhs">
         <div class="output-col-header xhs-header">小红书</div>
