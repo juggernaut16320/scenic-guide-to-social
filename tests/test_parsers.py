@@ -2,7 +2,7 @@
 import sys
 sys.path.insert(0, '.')
 
-from core.parsers import extract_tag, extract_list, parse_convert_output, parse_and_clean_entities
+from core.parsers import extract_tag, extract_list, parse_convert_json, parse_and_clean_entities, _repair_json
 
 
 def test_extract_tag():
