@@ -1,4 +1,4 @@
-"""从 .env 文件读取配置"""
+"""core/config.py —— 从 .env 文件读取配置"""
 
 import os
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 
 def _load_dotenv():
     """简易 .env 加载，不依赖第三方库"""
-    env_path = Path(__file__).parent / ".env"
+    env_path = Path(__file__).parent.parent / ".env"
     if not env_path.exists():
         return
     with open(env_path) as f:
@@ -25,11 +25,7 @@ _load_dotenv()
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-
-# LLM Provider 配置
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")  # deepseek | qwen | openai
-
-# DeepSeek 兼容 OpenAI 接口
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 
 # Qwen（预留）

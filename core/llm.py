@@ -1,27 +1,27 @@
-"""LLM 抽象层 —— 统一调用入口，切换 Provider 只改这里"""
+"""core/llm.py —— LLM 抽象层，统一调用入口，切换 Provider 只改这里"""
 
 from openai import OpenAI
-import config
+from core import config as cfg
 
 
 def _get_client(provider: str = None) -> tuple[OpenAI, str]:
     """根据 provider 返回对应的 client 和模型名"""
-    provider = provider or config.LLM_PROVIDER
+    provider = provider or cfg.LLM_PROVIDER
 
     if provider == "deepseek":
         return (
-            OpenAI(api_key=config.DEEPSEEK_API_KEY, base_url=config.DEEPSEEK_BASE_URL),
-            config.DEEPSEEK_MODEL,
+            OpenAI(api_key=cfg.DEEPSEEK_API_KEY, base_url=cfg.DEEPSEEK_BASE_URL),
+            cfg.DEEPSEEK_MODEL,
         )
     elif provider == "qwen":
         return (
-            OpenAI(api_key=config.QWEN_API_KEY, base_url=config.QWEN_BASE_URL),
-            config.QWEN_MODEL,
+            OpenAI(api_key=cfg.QWEN_API_KEY, base_url=cfg.QWEN_BASE_URL),
+            cfg.QWEN_MODEL,
         )
     elif provider == "openai":
         return (
-            OpenAI(api_key=config.OPENAI_API_KEY, base_url=config.OPENAI_BASE_URL),
-            config.OPENAI_MODEL,
+            OpenAI(api_key=cfg.OPENAI_API_KEY, base_url=cfg.OPENAI_BASE_URL),
+            cfg.OPENAI_MODEL,
         )
     else:
         raise ValueError(f"不支持的 LLM Provider: {provider}")
@@ -34,18 +34,7 @@ def call_llm(
     model: str = None,
     temperature: float = 0.7,
 ) -> str:
-    """统一 LLM 调用入口
-
-    Args:
-        system_prompt: 系统提示词
-        user_prompt: 用户输入
-        provider: deepseek / qwen / openai，默认用配置里的
-        model: 模型名，默认用 provider 对应的默认模型
-        temperature: 温度参数
-
-    Returns:
-        LLM 返回的文本
-    """
+    """统一 LLM 调用入口"""
     client, default_model = _get_client(provider)
     model = model or default_model
 

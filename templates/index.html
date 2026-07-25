@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>景区讲解词 → 社交营销内容 一键转换</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <h1>景区讲解词 → 社交营销内容 一键转换</h1>
+  <p>输入官方讲解词，AI 自动生成小红书种草文 / 短视频口播脚本 / 朋友圈配文</p>
+</div>
+
+<div class="container">
+  <!-- 左侧输入 -->
+  <div class="input-panel">
+    <div>
+      <label>📋 选择样例</label>
+      <div class="sample-tags" id="sampleTags"></div>
+    </div>
+    <div>
+      <label>📝 景区讲解词原文</label>
+      <textarea id="inputText" placeholder="可输入城市名（如：北京）、景点名（如：故宫）、或直接粘贴景区官方讲解词……"></textarea>
+      <div class="tool-row" style="margin-top:6px;">
+        <button class="btn btn-tool" onclick="pasteText()" title="从剪贴板粘贴">📋 粘贴</button>
+        <button class="btn btn-tool" onclick="clearText()">🗑 清空</button>
+        <span class="spacer"></span>
+        <span class="char-count" id="charCount">0 字</span>
+      </div>
+      <div class="input-hint">💡 输入城市名自动推荐景点并生成讲解词，输入景点名自动补全为完整讲解词，也可直接粘贴 300-800 字官方讲解词</div>
+    </div>
+    <div class="style-row">
+      <div class="style-group">
+        <span class="style-label">📕 小红书</span>
+        <select id="xhsStyle" onchange="regenSingle('xiaohongshu')">
+          <option value="种草探店">种草探店</option>
+          <option value="干货攻略">干货攻略</option>
+          <option value="情绪打卡">情绪打卡</option>
+        </select>
+      </div>
+      <div class="style-group">
+        <span class="style-label">🎬 抖音</span>
+        <select id="dyStyle" onchange="regenSingle('douyin')">
+          <option value="正经解说">正经解说</option>
+          <option value="搞笑旁白">搞笑旁白</option>
+          <option value="打卡推荐">打卡推荐</option>
+        </select>
+      </div>
+    </div>
+    <div class="entity-section" id="entitySection" style="display:none;">
+      <div class="entity-label">🔍 识别实体</div>
+      <div class="entity-badges" id="entityBadges"></div>
+    </div>
+    <button class="btn btn-primary" id="submitBtn" onclick="doConvert()">🚀 一键转换</button>
+    <div id="errorMsg" class="error" style="display:none;"></div>
+  </div>
+
+  <!-- 右侧输出 -->
+  <div class="output-panel">
+    <div class="output-card card-xhs">
+      <div class="output-card-header">
+        📕 小红书
+        <select class="card-style-select" id="xhsCardStyle" onchange="regenSingle('xiaohongshu')" style="display:none;">
+          <option value="种草探店">种草探店</option>
+          <option value="干货攻略">干货攻略</option>
+          <option value="情绪打卡">情绪打卡</option>
+        </select>
+      </div>
+      <div class="output-card-body empty" id="outputXhs">选择样例并点击生成</div>
+    </div>
+    <div class="output-card card-dy">
+      <div class="output-card-header">
+        🎬 抖音
+        <select class="card-style-select" id="dyCardStyle" onchange="regenSingle('douyin')" style="display:none;">
+          <option value="正经解说">正经解说</option>
+          <option value="搞笑旁白">搞笑旁白</option>
+          <option value="打卡推荐">打卡推荐</option>
+        </select>
+      </div>
+      <div class="output-card-body empty" id="outputDy">选择样例并点击生成</div>
+    </div>
+    <div class="output-card card-pyq">
+      <div class="output-card-header">💬 朋友圈</div>
+      <div class="output-card-body empty" id="outputPyq">选择样例并点击生成</div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/utils.js"></script>
+<script src="/static/js/render.js"></script>
+<script src="/static/js/entities.js"></script>
+<script src="/static/js/main.js"></script>
+</body>
+</html>
