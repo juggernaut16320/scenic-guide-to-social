@@ -2,4 +2,5 @@
 from api import app
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    # threaded=True：并发处理请求，避免 LLM 调用阻塞图片等静态资源加载
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False, threaded=True)

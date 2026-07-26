@@ -21,13 +21,14 @@
   <div class="kick">ScenicFly · Scenic Atlas</div>
   <h1>景点星图 <em>· 星旅台</em></h1>
   <div class="rule"></div>
-  <p>拖拽节点 · 滚轮缩放 · 点击景点，让它长出社交文案</p>
+  <p>拖拽旋转星球 · 滚轮缩放 · 点击景点穿越去生成</p>
 </div>
 
 <div class="topright">
   <div class="search-wrap">
     <input id="search" type="text" placeholder="搜城市或景点…" autocomplete="off">
   </div>
+  <button class="view-toggle-btn" id="viewToggle" type="button"></button>
   <a class="nav-btn" href="/studio">进入生成台 →</a>
 </div>
 
@@ -54,6 +55,19 @@
 </aside>
 
 <script>window.GRAPH_DATA = {{ graph_data|tojson }};</script>
-<script src="/static/js/atlas.js"></script>
+<script>
+(function () {
+  var view = new URLSearchParams(location.search).get('view') || localStorage.getItem('atlasView') || '3d';
+  function load(src, cb) { var s = document.createElement('script'); s.src = src; if (cb) s.onload = cb; document.body.appendChild(s); }
+  if (view === '2d') { load('/static/js/atlas2d.js'); }
+  else { load('/static/js/lib/three.min.js', function () { load('/static/js/atlas.js'); }); }
+  var btn = document.getElementById('viewToggle');
+  if (btn) {
+    btn.textContent = (view === '2d') ? '🌍 3D 星球' : '◐ 2D 星图';
+    btn.title = (view === '2d') ? '切换到 3D 卡通星球' : '切换到 2D 平面星球';
+    btn.addEventListener('click', function () { localStorage.setItem('atlasView', view === '2d' ? '3d' : '2d'); location.href = '/'; });
+  }
+})();
+</script>
 </body>
 </html>

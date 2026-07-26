@@ -1,326 +1,394 @@
-/* atlas.js —— 景点星图：力导向 Canvas，节点为景点照片瓦片，点击景点→生成台 */
-(function(){
+/* atlas.js —— Three.js 卡通低多边形地球：3D 起伏地形(山/海/雪) + 分类建筑 + 名字标签 + 同城聚簇连线 + 悬停亮暗 + 俯冲穿越 */
+(function () {
 "use strict";
+if (!window.THREE) { console.error("THREE 未加载"); return; }
+var THREE = window.THREE;
+var RAW = window.GRAPH_DATA || { nodes: [], edges: [] };
 
-/* 数据由 atlas.html 内联注入 window.GRAPH_DATA（来自后端真实城市→景点） */
-const RAW = window.GRAPH_DATA || {nodes:[],edges:[]};
-
-/* 类别 → 图标 / 颜色 / 渐变（照片瓦片风） */
-const CAT_STYLE = {
-  "古建筑类": {emoji:"🏯", color:"#ff7a59", g:["#ffab6b","#e8604f"]},
-  "自然山水类": {emoji:"🏔️", color:"#57e0c4", g:["#7bd8c6","#3a9d8b"]},
-  "历史遗迹类": {emoji:"🏛️", color:"#ffbf6b", g:["#f6c56b","#c98a3a"]},
-  "古镇街区类": {emoji:"🏘️", color:"#5fa8ff", g:["#8fb8ff","#5a7de0"]},
-  "宗教建筑类": {emoji:"🛕", color:"#b892e0", g:["#b8a0e0","#7d5fc0"]},
+var CAT_STYLE = {
+  "古建筑类": { color: "#ff7a59", g: ["#ffab6b", "#e8604f"], emoji: "🏯" },
+  "自然山水类": { color: "#57e0c4", g: ["#7bd8c6", "#3a9d8b"], emoji: "🏔️" },
+  "历史遗迹类": { color: "#ffbf6b", g: ["#f6c56b", "#c98a3a"], emoji: "🏛️" },
+  "古镇街区类": { color: "#5fa8ff", g: ["#8fb8ff", "#5a7de0"], emoji: "🏘️" },
+  "宗教建筑类": { color: "#b892e0", g: ["#b8a0e0", "#7d5fc0"], emoji: "🛕" }
 };
-const DEFAULT_CAT = {emoji:"📍", color:"#9fb0ad", g:["#9fb0ad","#5f6f6c"]};
-const CITY_COLOR = "#ffbf6b", CENTER_COLOR = "#fff0d6";
-const catStyle = c => CAT_STYLE[c] || DEFAULT_CAT;
-const nodeColor = n => n.type==="center"?CENTER_COLOR : n.type==="city"?CITY_COLOR : catStyle(n.cat).color;
+var DEFAULT_CAT = { color: "#9fb0ad", g: ["#9fb0ad", "#5f6f6c"], emoji: "📍" };
+function catStyle(c) { return CAT_STYLE[c] || DEFAULT_CAT; }
 
-/* ── 画布与状态 ── */
-const canvas = document.getElementById("graph"), ctx = canvas.getContext("2d");
-let W=0, H=0, DPR=Math.min(window.devicePixelRatio||1, 2);
+var spotNodes = RAW.nodes.filter(function (n) { return n.type === "spot"; });
+var cityCount = RAW.nodes.filter(function (n) { return n.type === "city"; }).length;
+var cityOf = {};
+RAW.edges.forEach(function (e) { if (e[0].indexOf("city:") === 0 && e[1].indexOf("spot:") === 0) cityOf[e[1].slice(5)] = e[0].slice(5); });
 
-const rOf = n => n.type==="center" ? 22 : n.type==="city" ? 13+n.w*4 : 14+n.w*5;
-const nodes = RAW.nodes.map(n => ({...n, x:0, y:0, vx:0, vy:0, r:rOf(n)}));
-const byId = Object.fromEntries(nodes.map(n=>[n.id,n]));
-const edges = RAW.edges.map(([a,b])=>({a:byId[a], b:byId[b]})).filter(e=>e.a&&e.b);
-const neighbors = {}; nodes.forEach(n=>neighbors[n.id]=new Set());
-edges.forEach(e=>{neighbors[e.a.id].add(e.b.id); neighbors[e.b.id].add(e.a.id);});
+/* ── three 基础 ── */
+var canvas = document.getElementById("graph");
+var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+var scene = new THREE.Scene();
+var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 4000);
+camera.position.set(0, 0, 320);
+function resize() { renderer.setSize(window.innerWidth, window.innerHeight); camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); }
+window.addEventListener("resize", resize); resize();
 
-const view = {x:0, y:0, scale:1};
-const hiddenCats = new Set();               // 隐藏的类别（图例过滤，仅作用于景点）
-let hoverNode=null, selectedNode=null, dragNode=null, dragMoved=false;
-let panning=false, panStart=null, searchTerm="", physicsOn=true;
-let bootTime=performance.now(), seeded=false;
+scene.add(new THREE.AmbientLight(0x8fa4c0, 0.9));
+var key = new THREE.DirectionalLight(0xfff2e2, 1.2); key.position.set(-1, 0.9, 0.8); scene.add(key);
+var fill = new THREE.DirectionalLight(0x57e0c4, 0.5); fill.position.set(1, -0.4, -0.5); scene.add(fill);
 
-/* 相机：点击节点→跟随居中；退出→补间回「中国景点」中心 */
-let camFollow=null;   // {node, t0, dur}
-let camTween=null;    // {x0,y0,s0,tx,ty,ts,t0,dur}
-const PANEL_W=380;
-const panelSpace=()=> W<=860 ? 0 : PANEL_W;
-function focusNode(n){ camTween=null; camFollow={node:n, t0:performance.now(), dur:750}; }
-function animateView(tx,ty,ts){ camFollow=null; camTween={x0:view.x,y0:view.y,s0:view.scale,tx,ty,ts,t0:performance.now(),dur:650}; }
-function stopCamera(){ camFollow=null; camTween=null; }
-function updateCamera(now){
-  if(camTween){
-    const p=Math.min((now-camTween.t0)/camTween.dur,1), e=1-Math.pow(1-p,3);
-    view.x=camTween.x0+(camTween.tx-camTween.x0)*e;
-    view.y=camTween.y0+(camTween.ty-camTween.y0)*e;
-    view.scale=camTween.s0+(camTween.ts-camTween.s0)*e;
-    if(p>=1) camTween=null;
-  } else if(camFollow){
-    const n=camFollow.node, dX=(W-panelSpace())/2, dY=H/2;
-    const txv=dX-(n.x-W/2)*view.scale-W/2, tyv=dY-(n.y-H/2)*view.scale-H/2;
-    view.x+=(txv-view.x)*.14; view.y+=(tyv-view.y)*.14;
-    if(now-camFollow.t0>camFollow.dur) camFollow=null;
+var Rs = 100, MTN = 24, BASE = 3, SEA = 0.02;
+var globe = new THREE.Group(); scene.add(globe);
+
+/* ── 位移噪声：大块大陆 + 多层起伏山脉 ── */
+var NDX = [], NDY = [], NDZ = [], NFRQ = [], NPH = [], NAMP = [];
+(function () {
+  for (var k = 0; k < 7; k++) {
+    var th = Math.random() * 6.2832, z = Math.random() * 2 - 1, r = Math.sqrt(1 - z * z);
+    NDX.push(Math.cos(th) * r); NDY.push(Math.sin(th) * r); NDZ.push(z);
+    NFRQ.push(0.8 * Math.pow(1.72, k)); NPH.push(Math.random() * 6.2832); NAMP.push(Math.pow(0.6, k));
+  }
+})();
+function fbm3(x, y, z) { var s = 0, tot = 0; for (var k = 0; k < NDX.length; k++) { s += NAMP[k] * Math.sin((x * NDX[k] + y * NDY[k] + z * NDZ[k]) * NFRQ[k] + NPH[k]); tot += NAMP[k]; } return s / tot; }
+function surfaceR(x, y, z) { var h = fbm3(x, y, z); return h > SEA ? Rs + BASE + (h - SEA) * MTN : Rs; }
+/* 卡通配色：亮蓝海 + 清爽绿地 + 白极冠 */
+function faceColor(h, ay) {
+  var c = new THREE.Color();
+  if (ay > 0.9) return c.set("#eef5f3");                 // 极地冰盖
+  if (h <= SEA - 0.05) return c.set("#1f6fa8");          // 深海
+  if (h <= SEA) return c.set("#2f9fd0");                 // 浅海
+  var e = h - SEA;
+  if (ay > 0.82) return c.set("#dfeaea");                // 近极：雪
+  if (e < 0.02) return c.set("#ecdca0");                 // 沙滩
+  if (e < 0.14) return c.set("#6cc35b");                 // 草原
+  if (e < 0.3) return c.set("#4a9f45");                  // 森林
+  if (e < 0.5) return c.set("#8a7d64");                  // 山岩
+  return c.set("#f4f8f4");                               // 雪顶
+}
+
+/* ── 卡通低多边形地形球（chunky 平面着色，大陆抬升）── */
+(function () {
+  var geo = new THREE.IcosahedronGeometry(Rs, 5).toNonIndexed();
+  var pos = geo.attributes.position, n = pos.count, colors = new Float32Array(n * 3);
+  for (var i = 0; i < n; i += 3) {
+    var vs = [], hs = [], cy = 0;
+    for (var t = 0; t < 3; t++) { var vx = pos.getX(i + t), vy = pos.getY(i + t), vz = pos.getZ(i + t), L = Math.sqrt(vx * vx + vy * vy + vz * vz); var d = { x: vx / L, y: vy / L, z: vz / L }; vs.push(d); hs.push(fbm3(d.x, d.y, d.z)); cy += d.y / 3; }
+    var avg = (hs[0] + hs[1] + hs[2]) / 3, col = faceColor(avg, Math.abs(cy));
+    for (var u = 0; u < 3; u++) {
+      var rr = hs[u] > SEA ? Rs + BASE + (hs[u] - SEA) * MTN : Rs;
+      pos.setXYZ(i + u, vs[u].x * rr, vs[u].y * rr, vs[u].z * rr);
+      colors[(i + u) * 3] = col.r; colors[(i + u) * 3 + 1] = col.g; colors[(i + u) * 3 + 2] = col.b;
+    }
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3)); geo.computeVertexNormals();
+  globe.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95, metalness: 0 })));
+})();
+
+/* ── 蓬松低多边形云朵 ── */
+var clouds = new THREE.Group(); globe.add(clouds);
+var cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 1, transparent: true, opacity: 0.95 });
+for (var ci = 0; ci < 13; ci++) {
+  var puff = new THREE.Group();
+  for (var pj = 0; pj < 4; pj++) { var b = new THREE.Mesh(new THREE.IcosahedronGeometry(3 + Math.random() * 3.5, 0), cloudMat); b.position.set((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 5); b.scale.y = 0.65; puff.add(b); }
+  var th = Math.random() * 6.2832, z = Math.random() * 2 - 1, rr2 = Math.sqrt(1 - z * z);
+  puff.position.set(Math.cos(th) * rr2, z, Math.sin(th) * rr2).multiplyScalar(Rs * 1.28);
+  puff.lookAt(0, 0, 0); clouds.add(puff);
+}
+/* 大气光晕 */
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(Rs * 1.28, 48, 32), new THREE.MeshBasicMaterial({ color: 0x8fd8ff, transparent: true, opacity: 0.12, side: THREE.BackSide })));
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(Rs * 1.5, 48, 32), new THREE.MeshBasicMaterial({ color: 0x3a86b0, transparent: true, opacity: 0.34, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false })));
+
+/* ── 手搓低多边形树（松树 / 圆冠），撒在绿地上 ── */
+var trunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5230, flatShading: true, roughness: 1 });
+var leafMats = [0x4fa84a, 0x3f8f3a, 0x5fb85a, 0x2f7d38].map(function (c) { return new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 1 }); });
+function makeTree() {
+  var g = new THREE.Group(), lm = leafMats[Math.floor(Math.random() * leafMats.length)];
+  var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 2.2, 5), trunkMat); trunk.position.y = 1.1; g.add(trunk);
+  if (Math.random() < 0.55) { // 松树：三层锥
+    var y = 3;[[2.2, 3], [1.7, 2.5], [1.1, 2]].forEach(function (s) { var c = new THREE.Mesh(new THREE.ConeGeometry(s[0], s[1], 6), lm); c.position.y = y; g.add(c); y += s[1] * 0.55; });
+  } else { // 圆冠：低多边形球
+    var f = new THREE.Mesh(new THREE.IcosahedronGeometry(2.4, 0), lm); f.position.y = 3.7; f.scale.y = 1.15; g.add(f);
+  }
+  g.scale.setScalar(0.8 + Math.random() * 0.55);
+  return g;
+}
+(function scatterTrees() {
+  var placed = 0, tries = 0;
+  while (placed < 80 && tries < 900) {
+    tries++;
+    var th = Math.random() * 6.2832, z = Math.random() * 2 - 1, r = Math.sqrt(1 - z * z);
+    var dx = Math.cos(th) * r, dy = z, dz = Math.sin(th) * r, h = fbm3(dx, dy, dz);
+    if (h <= SEA + 0.02 || h > SEA + 0.26 || Math.abs(dy) > 0.78) continue; // 只落草原/森林、避开极地
+    var tree = makeTree(), dir = new THREE.Vector3(dx, dy, dz);
+    tree.position.copy(dir.clone().multiplyScalar(surfaceR(dx, dy, dz)));
+    tree.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    globe.add(tree); placed++;
+  }
+})();
+
+/* ── 手搓低多边形小山丘 + 石头 ── */
+var hillMats = [0x4a9f45, 0x3f8f3a, 0x6a705f, 0x7c8a5a].map(function (c) { return new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 1 }); });
+var rockMat = new THREE.MeshStandardMaterial({ color: 0x8f8a83, flatShading: true, roughness: 1 });
+var snowRockMat = new THREE.MeshStandardMaterial({ color: 0xd8ded9, flatShading: true, roughness: 1 });
+function makeHill() {
+  var m = hillMats[Math.floor(Math.random() * hillMats.length)];
+  var h = new THREE.Mesh(new THREE.IcosahedronGeometry(4 + Math.random() * 5, 1), m);
+  h.position.y = 1.2; h.scale.set(1 + Math.random() * 0.7, 0.42 + Math.random() * 0.2, 1 + Math.random() * 0.7);
+  return h;
+}
+function makeRock(snow) {
+  var g = new THREE.Group(), mat = snow ? snowRockMat : rockMat, k = 1 + Math.floor(Math.random() * 2);
+  for (var i = 0; i <= k; i++) { var r = new THREE.Mesh(new THREE.IcosahedronGeometry(1 + Math.random() * 2.2, 0), mat); r.position.set((Math.random() - 0.5) * 3, 0.8 + Math.random(), (Math.random() - 0.5) * 3); r.scale.set(1, 0.7 + Math.random() * 0.5, 1); r.rotation.y = Math.random() * 6.28; g.add(r); }
+  return g;
+}
+function scatterOn(count, tries, hLo, hHi, makeFn) {
+  var placed = 0, t = 0;
+  while (placed < count && t < tries) {
+    t++;
+    var th = Math.random() * 6.2832, z = Math.random() * 2 - 1, r = Math.sqrt(1 - z * z);
+    var dx = Math.cos(th) * r, dy = z, dz = Math.sin(th) * r, h = fbm3(dx, dy, dz);
+    if (h <= SEA + hLo || h > SEA + hHi || Math.abs(dy) > 0.86) continue;
+    var o = makeFn(h), dir = new THREE.Vector3(dx, dy, dz);
+    o.position.copy(dir.clone().multiplyScalar(surfaceR(dx, dy, dz)));
+    o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    globe.add(o); placed++;
   }
 }
+scatterOn(24, 500, 0.03, 0.4, function () { return makeHill(); });               // 山丘：草原~山地
+scatterOn(34, 700, 0.0, 0.62, function (h) { return makeRock(h > SEA + 0.42); }); // 石头：高处用雪石
 
-function catOf(n){ return n.type==="spot" ? n.cat : n.type; }
-function visible(n){ return n.type!=="spot" || !hiddenCats.has(n.cat); }
-
-function resize(){
-  W=window.innerWidth; H=window.innerHeight;
-  canvas.width=W*DPR; canvas.height=H*DPR;
-  canvas.style.width=W+"px"; canvas.style.height=H+"px";
-  if(!seeded){ seed(); seeded=true; }
+/* ── 河流 / 湖泊 / 雪山 ── */
+var riverMat = new THREE.MeshStandardMaterial({ color: 0x36a6d6, roughness: 0.25, metalness: 0.25 });
+var lakeMat = new THREE.MeshStandardMaterial({ color: 0x2f9fd0, roughness: 0.2, metalness: 0.3 });
+function makeLake() { var r = 4 + Math.random() * 5; var m = new THREE.Mesh(new THREE.CircleGeometry(r, 16), lakeMat); m.rotation.x = -Math.PI / 2; m.position.y = 0.4; return m; }
+var mtRockMat = new THREE.MeshStandardMaterial({ color: 0x6e6a5f, flatShading: true, roughness: 1 });
+function makeSnowMt() {
+  var g = new THREE.Group(), R = 5 + Math.random() * 3.5, H = 12 + Math.random() * 10;
+  var base = new THREE.Mesh(new THREE.ConeGeometry(R, H, 6), mtRockMat); base.position.y = H / 2; g.add(base);
+  var cap = new THREE.Mesh(new THREE.ConeGeometry(R * 0.42, H * 0.34, 6), snowRockMat); cap.position.y = H * 0.83; g.add(cap);
+  g.scale.setScalar(0.9 + Math.random() * 0.5); return g;
 }
-function seed(){
-  const cx=W/2, cy=H/2;
-  const cities = nodes.filter(n=>n.type==="city");
-  nodes.forEach(n=>{
-    if(n.type==="center"){ n.x=cx; n.y=cy; return; }
-    if(n.type==="city"){
-      const i=cities.indexOf(n), a=i/cities.length*Math.PI*2;
-      n.x=cx+Math.cos(a)*260; n.y=cy+Math.sin(a)*220;
-      return;
+scatterOn(8, 500, 0.02, 0.13, function () { return makeLake(); });    // 湖：低洼绿地
+scatterOn(12, 600, 0.34, 0.75, function () { return makeSnowMt(); });  // 雪山：高地
+/* 河流：从高地沿最陡下降走到海 */
+(function () {
+  var made = 0, attempts = 0;
+  while (made < 6 && attempts < 260) {
+    attempts++;
+    var th = Math.random() * 6.2832, z = Math.random() * 2 - 1, rr = Math.sqrt(1 - z * z);
+    var d = new THREE.Vector3(Math.cos(th) * rr, z, Math.sin(th) * rr);
+    if (fbm3(d.x, d.y, d.z) < SEA + 0.28 || Math.abs(d.y) > 0.8) continue;
+    var pts = [], steps = 0;
+    while (steps < 48) {
+      pts.push(d.clone());
+      if (fbm3(d.x, d.y, d.z) <= SEA) break;
+      var up = Math.abs(d.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      var t1 = new THREE.Vector3().crossVectors(up, d).normalize(), t2 = new THREE.Vector3().crossVectors(d, t1).normalize();
+      var best = null, bh = fbm3(d.x, d.y, d.z);
+      for (var a = 0; a < 10; a++) { var ang = a / 10 * 6.2832; var nd = d.clone().addScaledVector(t1, Math.cos(ang) * 0.055).addScaledVector(t2, Math.sin(ang) * 0.055).normalize(); var nh = fbm3(nd.x, nd.y, nd.z); if (nh < bh) { bh = nh; best = nd; } }
+      if (!best) break; d = best; steps++;
     }
-    // 景点撒在其城市附近
-    const city = byId[[...neighbors[n.id]][0]];
-    const a=Math.random()*Math.PI*2, d=70+Math.random()*40;
-    n.x=(city?city.x:cx)+Math.cos(a)*d; n.y=(city?city.y:cy)+Math.sin(a)*d;
-  });
-}
-window.addEventListener("resize", ()=>{ seeded=false; resize(); });
-
-/* ── 力导向 ── */
-function simulate(){
-  if(!physicsOn) return;
-  const cx=W/2, cy=H/2, vis=nodes.filter(visible);
-  for(let i=0;i<vis.length;i++) for(let j=i+1;j<vis.length;j++){
-    const a=vis[i], b=vis[j];
-    let dx=b.x-a.x, dy=b.y-a.y, d2=dx*dx+dy*dy;
-    if(d2<1){d2=1;dx=.5;dy=.5;}
-    const d=Math.sqrt(d2), f=5000*(a.w+b.w)*.5/d2, fx=dx/d*f, fy=dy/d*f;
-    a.vx-=fx; a.vy-=fy; b.vx+=fx; b.vy+=fy;
+    if (pts.length < 4) continue;
+    var cp = pts.map(function (p) { return p.clone().multiplyScalar(surfaceR(p.x, p.y, p.z) + 0.5); });
+    var tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(cp), cp.length * 4, 1.1, 6, false);
+    globe.add(new THREE.Mesh(tube, riverMat)); made++;
   }
-  edges.forEach(e=>{
-    if(!visible(e.a)||!visible(e.b)) return;
-    const dx=e.b.x-e.a.x, dy=e.b.y-e.a.y, d=Math.max(Math.hypot(dx,dy),1);
-    const ideal = e.a.type==="center"||e.b.type==="center" ? 230 : 84+(e.a.r+e.b.r)*1.4;
-    const f=(d-ideal)*.014, fx=dx/d*f, fy=dy/d*f;
-    e.a.vx+=fx; e.a.vy+=fy; e.b.vx-=fx; e.b.vy-=fy;
+})();
+
+/* 星空 */
+(function () {
+  var g = new THREE.BufferGeometry(), n = 1400, p = new Float32Array(n * 3);
+  for (var i = 0; i < n; i++) { var r = 800 + Math.random() * 600, th = Math.random() * 6.2832, ph = Math.acos(2 * Math.random() - 1); p[i * 3] = r * Math.sin(ph) * Math.cos(th); p[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th); p[i * 3 + 2] = r * Math.cos(ph); }
+  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xe9f1ef, size: 1.7, sizeAttenuation: false, transparent: true, opacity: 0.85 })));
+})();
+
+/* ── 景点：按城市聚簇分布 ── */
+var GA = Math.PI * (3 - Math.sqrt(5));
+var spots = spotNodes.map(function (n) { return { name: n.name, cat: n.cat, city: cityOf[n.name] || "", dir: null, surf: Rs, obj: null, hit: null, label: null, mats: [] }; });
+var groups = {}; spots.forEach(function (s) { (groups[s.city || "?"] = groups[s.city || "?"] || []).push(s); });
+var cityList = Object.keys(groups), NC = cityList.length;
+cityList.forEach(function (city, ci) {
+  var y = 1 - (ci / Math.max(NC - 1, 1)) * 2, r = Math.sqrt(Math.max(0, 1 - y * y)), th = ci * GA;
+  var base = new THREE.Vector3(Math.cos(th) * r, y, Math.sin(th) * r).normalize();
+  var up = Math.abs(base.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  var t1 = new THREE.Vector3().crossVectors(up, base).normalize(), t2 = new THREE.Vector3().crossVectors(base, t1).normalize();
+  var arr = groups[city];
+  arr.forEach(function (s, k) {
+    var ang = (k / arr.length) * 6.2832, rad = arr.length === 1 ? 0 : 0.15 + (k % 2) * 0.05;
+    s.dir = base.clone().addScaledVector(t1, Math.cos(ang) * rad).addScaledVector(t2, Math.sin(ang) * rad).normalize();
+    s.surf = surfaceR(s.dir.x, s.dir.y, s.dir.z) + 1;
   });
-  const center = byId["center"];
-  vis.forEach(n=>{
-    if(n.type==="center"){ n.vx+=(cx-n.x)*.05; n.vy+=(cy-n.y)*.05; return; }
-    n.vx+=(cx-n.x)*.0026; n.vy+=(cy-n.y)*.0026;
-  });
-  vis.forEach(n=>{
-    if(n===dragNode){ n.vx=0; n.vy=0; return; }
-    n.vx*=.86; n.vy*=.86;
-    const sp=Math.hypot(n.vx,n.vy);
-    if(sp>14){ n.vx*=14/sp; n.vy*=14/sp; }
-    n.x+=n.vx; n.y+=n.vy;
-  });
+});
+
+/* 分类 3D 建筑 */
+function buildModel(cat) {
+  var st = catStyle(cat), mat = new THREE.MeshToonMaterial({ color: new THREE.Color(st.color) }), accent = new THREE.MeshToonMaterial({ color: new THREE.Color(st.g[1]) });
+  var g = new THREE.Group();
+  function add(geo, m, x, y) { var me = new THREE.Mesh(geo, m || mat); me.position.set(x || 0, y || 0, 0); g.add(me); }
+  if (cat === "自然山水类") { add(new THREE.ConeGeometry(4.5, 9, 6), mat, 0, 4.5); add(new THREE.ConeGeometry(3, 6, 6), mat, 3.4, 3); add(new THREE.ConeGeometry(2.4, 4.5, 6), mat, -3.2, 2.2); }
+  else if (cat === "古建筑类") { add(new THREE.CylinderGeometry(3, 3.4, 1.2, 8), mat, 0, 0.6); add(new THREE.ConeGeometry(3.8, 1.6, 4), accent, 0, 1.8); add(new THREE.CylinderGeometry(2.3, 2.6, 1, 8), mat, 0, 3); add(new THREE.ConeGeometry(3, 1.5, 4), accent, 0, 4.1); add(new THREE.CylinderGeometry(1.5, 1.7, 1, 8), mat, 0, 5.3); add(new THREE.ConeGeometry(2.2, 1.5, 4), accent, 0, 6.4); }
+  else if (cat === "历史遗迹类") { add(new THREE.CylinderGeometry(1.5, 1.7, 6.5, 10), mat, 0, 3.2); add(new THREE.BoxGeometry(5, 1.1, 2.4), accent, 0, 7); }
+  else if (cat === "古镇街区类") { add(new THREE.BoxGeometry(3.2, 3, 3.2), mat, 0, 1.5); add(new THREE.ConeGeometry(2.6, 1.6, 4), accent, 0, 3.8); add(new THREE.BoxGeometry(2.4, 2.4, 2.4), mat, 3.2, 1.2); add(new THREE.ConeGeometry(2, 1.3, 4), accent, 3.2, 3.1); add(new THREE.BoxGeometry(2, 2, 2), mat, -2.8, 1); }
+  else if (cat === "宗教建筑类") { add(new THREE.CylinderGeometry(3.2, 3.6, 2, 12), mat, 0, 1); add(new THREE.SphereGeometry(2.7, 16, 12, 0, 6.2832, 0, Math.PI / 2), accent, 0, 2); add(new THREE.ConeGeometry(0.6, 2.2, 8), mat, 0, 4.6); }
+  else add(new THREE.ConeGeometry(3, 6, 6), mat, 0, 3);
+  g.scale.setScalar(0.95);
+  return g;
+}
+function roundRectC(x, a, b, w, h, r) { x.beginPath(); x.moveTo(a + r, b); x.arcTo(a + w, b, a + w, b + h, r); x.arcTo(a + w, b + h, a, b + h, r); x.arcTo(a, b + h, a, b, r); x.arcTo(a, b, a + w, b, r); x.closePath(); }
+function makeLabel(text) {
+  var fs = 46, pad = 10, c = document.createElement("canvas"), x = c.getContext("2d");
+  x.font = '700 ' + fs + 'px "Noto Serif SC",serif'; var w = x.measureText(text).width;
+  c.width = Math.ceil(w + pad * 2 + 10); c.height = fs + pad * 2;
+  x = c.getContext("2d"); x.font = '700 ' + fs + 'px "Noto Serif SC",serif'; x.textBaseline = "middle";
+  x.fillStyle = "rgba(7,15,18,.72)"; roundRectC(x, 0, 0, c.width, c.height, c.height / 2); x.fill();
+  x.strokeStyle = "rgba(255,255,255,.14)"; x.lineWidth = 2; x.stroke();
+  x.fillStyle = "#fff3e0"; x.fillText(text, pad + 5, c.height / 2 + 2);
+  var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: true, depthWrite: false }));
+  sp.scale.set(c.width / c.height * 7.5, 7.5, 1);
+  return sp;
 }
 
-/* ── 坐标变换 ── */
-const w2s=(x,y)=>[(x-W/2)*view.scale+W/2+view.x,(y-H/2)*view.scale+H/2+view.y];
-const s2w=(x,y)=>[(x-W/2-view.x)/view.scale+W/2,(y-H/2-view.y)/view.scale+H/2];
+var hitList = [], beacons = [];
+spots.forEach(function (s) {
+  var col = new THREE.Color(catStyle(s.cat).color);
+  var holder = new THREE.Group();
+  holder.position.copy(s.dir.clone().multiplyScalar(s.surf));
+  holder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), s.dir);
+  // 发光底座平台
+  var base = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 5.2, 1.3, 14), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.4, flatShading: true, roughness: 0.7 }));
+  base.position.y = 0.65; holder.add(base);
+  // 建筑（放大更醒目）
+  var mdl = buildModel(s.cat); mdl.scale.multiplyScalar(1.25); mdl.position.y = 1.3; holder.add(mdl);
+  base.material.transparent = true; s.mats.push(base.material);
+  mdl.traverse(function (o) { if (o.material) { o.material.transparent = true; s.mats.push(o.material); } });
+  // 光柱信标 + 脉冲光环（不参与亮暗，始终可见）
+  var beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 2.6, 26, 12, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+  beam.position.y = 15; holder.add(beam);
+  var ring = new THREE.Mesh(new THREE.RingGeometry(5, 6.6, 24), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.15; holder.add(ring);
+  beacons.push({ ring: ring });
+  var lab = makeLabel(s.name); lab.position.set(0, 16, 0); holder.add(lab); s.label = lab;
+  globe.add(holder); s.obj = holder;
+  var hb = new THREE.Mesh(new THREE.SphereGeometry(12, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+  hb.position.copy(holder.position); hb.userData.spot = s; globe.add(hb); s.hit = hb; hitList.push(hb);
+});
 
-function nodeAlpha(n){
-  const f=hoverNode||selectedNode; let a=1;
-  if(f) a=(n===f||neighbors[f.id].has(n.id))?1:.12;
-  if(searchTerm){
-    const hit=n.name.toLowerCase().includes(searchTerm);
-    a=Math.min(a, hit?1:.07);
+/* 同城连线（聚簇内成环，全都连上）*/
+var arcs = [];
+cityList.forEach(function (city) {
+  var arr = groups[city]; if (arr.length < 2 || city === "?") return;
+  for (var i = 0; i < arr.length; i++) {
+    var a = arr[i].dir.clone().multiplyScalar(arr[i].surf + 4), b = arr[(i + 1) % arr.length].dir.clone().multiplyScalar(arr[(i + 1) % arr.length].surf + 4);
+    var mid = a.clone().add(b).multiplyScalar(0.5).normalize().multiplyScalar(Rs * 1.2);
+    var curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+    var mtl = new THREE.MeshStandardMaterial({ color: 0xcaf6ea, emissive: 0x57e0c4, emissiveIntensity: 0.95, transparent: true, opacity: 0.9, roughness: 0.4, metalness: 0 });
+    var tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 26, 0.8, 6, false), mtl);
+    globe.add(tube); arcs.push({ line: tube, city: city });
   }
-  return a;
-}
-function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+});
 
-/* ── 渲染 ── */
-function draw(now){
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-  ctx.clearRect(0,0,W,H);
-  const boot=Math.min((now-bootTime)/1500,1), ease=1-Math.pow(1-boot,3);
-  const focus=hoverNode||selectedNode, t=now*.001;
-
-  // 边
-  edges.forEach(e=>{
-    if(!visible(e.a)||!visible(e.b)) return;
-    let alpha=Math.min(nodeAlpha(e.a),nodeAlpha(e.b))*.5*ease;
-    const lit=focus&&(e.a===focus||e.b===focus); if(lit) alpha=.95;
-    const[x1,y1]=w2s(e.a.x,e.a.y),[x2,y2]=w2s(e.b.x,e.b.y);
-    const mx=(x1+x2)/2+(y2-y1)*.06, my=(y1+y2)/2-(x2-x1)*.06;
-    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(mx,my,x2,y2);
-    if(lit){
-      const g=ctx.createLinearGradient(x1,y1,x2,y2);
-      g.addColorStop(0,nodeColor(e.a)); g.addColorStop(1,nodeColor(e.b));
-      ctx.strokeStyle=g; ctx.lineWidth=1.5; ctx.globalAlpha=alpha;
-    } else {
-      ctx.strokeStyle="rgba(87,224,196,1)"; ctx.lineWidth=.6; ctx.globalAlpha=alpha*.4;
-    }
-    ctx.stroke(); ctx.globalAlpha=1;
-    if(lit){
-      const p=(t*.45+(e.a.x+e.b.y)*.001)%1, q=1-p;
-      const px=q*q*x1+2*q*p*mx+p*p*x2, py=q*q*y1+2*q*p*my+p*p*y2;
-      ctx.beginPath(); ctx.arc(px,py,2,0,7); ctx.fillStyle="#fff6ea"; ctx.globalAlpha=.9; ctx.fill(); ctx.globalAlpha=1;
-    }
+/* ── 亮暗聚焦 ── */
+function setFocus(f) {
+  spots.forEach(function (s) {
+    var on = !f || s === f || (s.city && s.city === f.city), op = on ? 1 : 0.12;
+    s.mats.forEach(function (m) { m.opacity = op; });
+    if (s.label) s.label.material.opacity = on ? 1 : 0.06;
   });
-
-  // 节点
-  nodes.forEach(n=>{
-    if(!visible(n)) return;
-    const alpha=nodeAlpha(n)*ease, [sx,sy]=w2s(n.x,n.y), color=nodeColor(n);
-    const r=n.r*view.scale, isF=n===focus, breathe=1+Math.sin(t*1.5+n.x*.01)*.06;
-
-    // 光晕
-    const glowR=r*(isF?2.6:1.9)*breathe;
-    const gg=ctx.createRadialGradient(sx,sy,r*.3,sx,sy,glowR);
-    gg.addColorStop(0,color); gg.addColorStop(1,"transparent");
-    ctx.globalAlpha=alpha*(isF?.5:.24);
-    ctx.beginPath(); ctx.arc(sx,sy,glowR,0,7); ctx.fillStyle=gg; ctx.fill();
-    ctx.globalAlpha=alpha;
-
-    if(n.type==="spot"){
-      // 照片瓦片
-      const st=catStyle(n.cat), s=r*1.7, x=sx-s/2, y=sy-s/2, rad=s*.26;
-      const grad=ctx.createLinearGradient(x,y,x+s,y+s);
-      grad.addColorStop(0,st.g[0]); grad.addColorStop(1,st.g[1]);
-      ctx.save(); rr(ctx,x,y,s,s,rad);
-      if(isF||n===selectedNode){ ctx.shadowColor=color; ctx.shadowBlur=18; }
-      ctx.fillStyle=grad; ctx.fill(); ctx.shadowBlur=0;
-      ctx.lineWidth=1.4; ctx.strokeStyle="rgba(255,255,255,"+(.28*alpha)+")"; ctx.stroke(); ctx.clip();
-      ctx.globalAlpha=alpha; ctx.font=(s*.6)+"px serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
-      ctx.fillText(st.emoji, sx, sy+s*.04); ctx.restore();
-      if(n===selectedNode){ rr(ctx,x-4,y-4,s+8,s+8,rad+3); ctx.strokeStyle=color; ctx.lineWidth=1.2;
-        ctx.setLineDash([3,5]); ctx.lineDashOffset=-t*14; ctx.stroke(); ctx.setLineDash([]); }
-    } else {
-      // 城市 / 中心：发光圆核 + emoji
-      ctx.beginPath(); ctx.arc(sx,sy,r*.9,0,7); ctx.fillStyle=color;
-      if(isF){ ctx.shadowColor=color; ctx.shadowBlur=16; } ctx.fill(); ctx.shadowBlur=0;
-      ctx.font=(r*1.05)+"px serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
-      ctx.fillText(n.emoji, sx, sy);
-      if(n===selectedNode){ ctx.beginPath(); ctx.arc(sx,sy,r+7,0,7); ctx.strokeStyle=color; ctx.lineWidth=1.2;
-        ctx.setLineDash([3,5]); ctx.lineDashOffset=-t*14; ctx.stroke(); ctx.setLineDash([]); }
-    }
-
-    // 标签
-    const show = n.type!=="spot" || isF || (focus&&neighbors[focus.id].has(n.id)) || view.scale>1.4 || searchTerm;
-    if(show && alpha>.28){
-      const fs=Math.max(11, (n.type==="city"?15:12) * Math.min(view.scale,1.3));
-      ctx.font=(n.type!=="spot"?"700 ":"")+fs+'px "Noto Serif SC",serif';
-      ctx.textAlign="center"; ctx.textBaseline="alphabetic";
-      ctx.globalAlpha=alpha*.95; ctx.fillStyle=isF?"#fff3e0":"#dfeae7";
-      ctx.shadowColor="rgba(7,15,18,.95)"; ctx.shadowBlur=6;
-      const off = n.type==="spot" ? n.r*view.scale*.9+fs+5 : r+fs+5;
-      ctx.fillText(n.name, sx, sy+off); ctx.shadowBlur=0;
-    }
-    ctx.globalAlpha=1;
-  });
+  arcs.forEach(function (a) { a.line.material.opacity = !f ? 0.82 : (a.city === f.city ? 0.98 : 0.08); });
 }
-function loop(now){ simulate(); updateCamera(now); draw(now); requestAnimationFrame(loop); }
-resize(); requestAnimationFrame(loop);
 
-/* ── 拾取 / 交互 ── */
-function pick(mx,my){
-  const[wx,wy]=s2w(mx,my); let best=null, bd=1e9;
-  nodes.forEach(n=>{ if(!visible(n)) return;
-    const d=Math.hypot(n.x-wx,n.y-wy);
-    if(d<n.r*1.2+8 && d<bd){ best=n; bd=d; } });
-  return best;
+/* ── 交互 ── */
+globe.rotation.set(-0.15, 0.4, 0);
+var dragging = false, last = null, moved = false, vy = 0, paused = false, downSpot = null;
+var hidden = {}, searchTerm = "", selectedSpot = null, hoverSpot = null, focusQuat = null, focusN = 0, camTween = null, warping = false;
+var raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+var tip = document.getElementById("tip");
+function pickAt(cx, cy) {
+  ndc.x = (cx / window.innerWidth) * 2 - 1; ndc.y = -(cy / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  var hits = raycaster.intersectObjects(hitList);
+  for (var i = 0; i < hits.length; i++) { var s = hits[i].object.userData.spot; if (s && s.hit.visible) return s; }
+  return null;
 }
-const tip=document.getElementById("tip");
-canvas.addEventListener("mousemove", e=>{
-  const mx=e.clientX, my=e.clientY;
-  if(dragNode){ const[wx,wy]=s2w(mx,my); dragNode.x=wx; dragNode.y=wy; dragMoved=true; return; }
-  if(panning){ view.x+=mx-panStart[0]; view.y+=my-panStart[1]; panStart=[mx,my]; return; }
-  hoverNode=pick(mx,my); canvas.style.cursor=hoverNode?"pointer":"crosshair";
-  if(hoverNode){
-    const sub = hoverNode.type==="spot" ? hoverNode.cat : hoverNode.type==="city" ? "城市 · "+neighbors[hoverNode.id].size+"景点" : "";
-    tip.innerHTML=hoverNode.name+(sub?'<em>'+sub+'</em>':'');
-    tip.style.left=Math.min(mx+16,W-210)+"px"; tip.style.top=(my-8)+"px"; tip.classList.add("show");
-  } else tip.classList.remove("show");
+canvas.addEventListener("pointerdown", function (e) { dragging = true; last = [e.clientX, e.clientY]; moved = false; downSpot = pickAt(e.clientX, e.clientY); focusQuat = null; });
+canvas.addEventListener("pointermove", function (e) {
+  if (dragging) {
+    var dx = e.clientX - last[0], dy = e.clientY - last[1];
+    globe.rotation.y += dx * 0.005; globe.rotation.x = Math.max(-1.2, Math.min(1.2, globe.rotation.x + dy * 0.005));
+    vy = dx * 0.005; last = [e.clientX, e.clientY]; if (Math.abs(dx) + Math.abs(dy) > 3) moved = true; return;
+  }
+  var s = pickAt(e.clientX, e.clientY); canvas.style.cursor = s ? "pointer" : "grab";
+  if (s !== hoverSpot) { hoverSpot = s; setFocus(s || selectedSpot); }
+  if (s) { tip.innerHTML = s.name + '<em>' + s.cat + '</em>'; tip.style.left = Math.min(e.clientX + 16, window.innerWidth - 200) + "px"; tip.style.top = (e.clientY - 8) + "px"; tip.classList.add("show"); }
+  else tip.classList.remove("show");
 });
-canvas.addEventListener("mousedown", e=>{
-  stopCamera();                    // 用户接管：停止相机动画
-  const n=pick(e.clientX,e.clientY);
-  if(n){ dragNode=n; dragMoved=false; } else { panning=true; panStart=[e.clientX,e.clientY]; }
-});
-window.addEventListener("mouseup", ()=>{
-  if(dragNode){ if(!dragMoved) openPanel(dragNode); dragNode=null; }
-  panning=false;
-});
-canvas.addEventListener("wheel", e=>{
-  e.preventDefault();
-  stopCamera();                    // 手动缩放时停止相机动画
-  const f=e.deltaY<0?1.12:1/1.12, ns=Math.min(Math.max(view.scale*f,.4),3.2);
-  const mx=e.clientX-W/2, my=e.clientY-H/2;
-  view.x=mx-(mx-view.x)*(ns/view.scale); view.y=my-(my-view.y)*(ns/view.scale); view.scale=ns;
-}, {passive:false});
+window.addEventListener("pointerup", function (e) { if (dragging && !moved && downSpot && pickAt(e.clientX, e.clientY) === downSpot) openPanel(downSpot); dragging = false; });
+canvas.addEventListener("wheel", function (e) { e.preventDefault(); camera.position.z = Math.max(150, Math.min(520, camera.position.z * (e.deltaY < 0 ? 0.9 : 1.1))); }, { passive: false });
 canvas.addEventListener("dblclick", closePanel);
 
-/* ── 详情面板 ── */
-const panel=document.getElementById("panel");
-function studioURL(name){ return "/studio?spot="+encodeURIComponent(name); }
-function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function openPanel(n){
-  selectedNode=n;
-  const th=document.getElementById("pThumb");
-  const c=nodeColor(n);
-  if(n.type==="spot"){ const st=catStyle(n.cat); th.style.background="linear-gradient(135deg,"+st.g[0]+","+st.g[1]+")"; th.textContent=st.emoji; }
-  else{ th.style.background="linear-gradient(135deg,"+c+",rgba(0,0,0,.28))"; th.textContent=n.emoji; }
-  const catEl=document.getElementById("pCat");
-  const dot=document.getElementById("pDot");
-  dot.style.background=c; dot.style.color=c;
-  const body=document.getElementById("pBody");
-  if(n.type==="spot"){
-    catEl.querySelector("#pCatText").textContent=n.cat;
-    document.getElementById("pName").textContent=n.name;
-    body.innerHTML='<div class="pdesc">这是一处「'+esc(n.cat)+'」景点。点击下方按钮，让 AI 把它的讲解词一键转成小红书 / 抖音 / 朋友圈文案。</div>'
-      +'<div class="p-rule"></div>'
-      +'<a class="cta-gen" href="'+studioURL(n.name)+'">✦ 用它生成社交文案 →</a>'
-      +'<div class="cta-hint">将跳转到生成台并自动带入「'+esc(n.name)+'」</div>';
-  } else if(n.type==="city"){
-    catEl.querySelector("#pCatText").textContent="城市";
-    document.getElementById("pName").textContent=n.name;
-    const spots=[...neighbors[n.id]].map(id=>byId[id]).filter(m=>m.type==="spot");
-    let links='<div class="p-links-title">该城市景点 · '+spots.length+'</div>';
-    spots.forEach(m=>{ const st=catStyle(m.cat);
-      links+='<div class="p-link" data-go="'+studioURL(m.name)+'"><span class="li-emo">'+st.emoji+'</span><span class="li-nm">'+esc(m.name)+'</span><span class="li-go">生成 →</span></div>'; });
-    body.innerHTML='<div class="pdesc">从这座城市的星座里挑一个景点，点它直接去生成台。</div>'+links;
-    body.querySelectorAll(".p-link").forEach(el=>el.addEventListener("click",()=>{ window.location.href=el.dataset.go; }));
-  } else {
-    catEl.querySelector("#pCatText").textContent="星图中心";
-    document.getElementById("pName").textContent=n.name;
-    body.innerHTML='<div class="pdesc">这是整张星图的引力中心。拖动城市与景点，或直接点任意景点开始创作。</div>';
-  }
-  panel.classList.add("open");
-  focusNode(n);                    // 点击的节点平滑移到视图中心
+function loop() {
+  clouds.rotation.y += 0.0004;
+  var pt = performance.now() * 0.003;
+  for (var bi = 0; bi < beacons.length; bi++) { var sc = 1 + Math.sin(pt + bi) * 0.28; beacons[bi].ring.scale.set(sc, sc, sc); beacons[bi].ring.material.opacity = 0.35 + (Math.sin(pt + bi) * 0.5 + 0.5) * 0.4; }
+  if (warping) { camera.position.z += (camTween.z1 - camera.position.z) * 0.14; }
+  else if (dragging) { /* 手动 */ }
+  else if (focusQuat) { globe.quaternion.slerp(focusQuat, 0.08); if (++focusN > 46) focusQuat = null; }
+  else { globe.rotation.y += ((paused || selectedSpot) ? 0 : 0.0016) + vy; vy *= 0.92; }  /* 打开景区时几乎不转 */
+  if (camTween && !warping) { var e2 = Math.min((performance.now() - camTween.t0) / 550, 1), k = 1 - Math.pow(1 - e2, 3); camera.position.z = camTween.z0 + (camTween.z1 - camTween.z0) * k; if (e2 >= 1) camTween = null; }
+  renderer.render(scene, camera); requestAnimationFrame(loop);
 }
-function closePanel(){ panel.classList.remove("open"); selectedNode=null; animateView(0,0,1); } // 退出→回归「中国景点」中心
-document.getElementById("pclose").addEventListener("click", closePanel);
+loop();
 
-/* ── 图例（按类别过滤景点）── */
-const legendItems=document.getElementById("legendItems");
-Object.entries(CAT_STYLE).forEach(([cat,st])=>{
-  const cnt=nodes.filter(n=>n.type==="spot"&&n.cat===cat).length;
-  if(cnt===0) return;
-  const d=document.createElement("div"); d.className="li";
-  d.innerHTML='<span class="d" style="background:'+st.color+';color:'+st.color+'"></span><span class="nm">'+cat.replace("类","")+'</span><span class="ct">· '+cnt+'</span>';
-  d.addEventListener("click", ()=>{
-    hiddenCats.has(cat)?hiddenCats.delete(cat):hiddenCats.add(cat);
-    d.classList.toggle("off");
-    if(selectedNode&&selectedNode.type==="spot"&&hiddenCats.has(selectedNode.cat)) closePanel();
-    if(hoverNode&&hoverNode.type==="spot"&&hiddenCats.has(hoverNode.cat)) hoverNode=null;
-  });
+/* ── 面板 / 穿越 ── */
+function esc(x) { return String(x).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
+var panel = document.getElementById("panel");
+function focusSpot(s) { focusQuat = new THREE.Quaternion().setFromUnitVectors(s.dir.clone(), new THREE.Vector3(0, 0, 1)); focusN = 0; }
+function openPanel(s) {
+  selectedSpot = s; setFocus(s); focusSpot(s);
+  var stl = catStyle(s.cat), c = stl.color, th = document.getElementById("pThumb");
+  th.style.background = "linear-gradient(135deg," + stl.g[0] + "," + stl.g[1] + ")"; th.textContent = stl.emoji;
+  document.getElementById("pDot").style.background = c; document.getElementById("pDot").style.color = c;
+  document.getElementById("pCatText").textContent = s.cat;
+  document.getElementById("pName").textContent = s.name;
+  document.getElementById("pBody").innerHTML =
+    '<div class="pdesc">这是一处「' + esc(s.cat) + '」景点。点击下方按钮，穿越进「文旅转译局」，用它的讲解词原文一键生成小红书 / 抖音 / 朋友圈。</div>' +
+    '<div class="p-rule"></div><button class="cta-gen" id="ctaGen">✦ 穿越去生成社交文案 →</button>' +
+    '<div class="cta-hint">将带「' + esc(s.name) + '」进入生成台并自动开始</div>';
+  document.getElementById("ctaGen").addEventListener("click", function () { warpDepart(s); });
+  panel.classList.add("open");
+}
+function closePanel() { panel.classList.remove("open"); selectedSpot = null; setFocus(hoverSpot); }
+document.getElementById("pclose").addEventListener("click", closePanel);
+function warpDepart(s) {
+  panel.classList.remove("open"); focusSpot(s);
+  var v = new THREE.Vector3(); s.hit.getWorldPosition(v); v.project(camera);
+  var sx = (v.x * 0.5 + 0.5) * window.innerWidth, sy = (-v.y * 0.5 + 0.5) * window.innerHeight;
+  warping = true; camTween = { z1: -40 };
+  var ov = document.createElement("div"); ov.className = "warp-depart";
+  ov.style.setProperty("--wx", (sx / window.innerWidth * 100) + "%"); ov.style.setProperty("--wy", (sy / window.innerHeight * 100) + "%");
+  document.body.appendChild(ov);
+  setTimeout(function () { window.location.href = "/studio?spot=" + encodeURIComponent(s.name) + "&from=atlas"; }, 720);
+}
+
+/* ── 图例 / 搜索 / 工具 ── */
+function applyVis() { spots.forEach(function (s) { var vis = !hidden[s.cat] && (!searchTerm || s.name.toLowerCase().indexOf(searchTerm) >= 0); s.obj.visible = vis; s.hit.visible = vis; }); }
+var legendItems = document.getElementById("legendItems");
+Object.keys(CAT_STYLE).forEach(function (cat) {
+  var st = CAT_STYLE[cat], cnt = spots.filter(function (s) { return s.cat === cat; }).length; if (!cnt) return;
+  var d = document.createElement("div"); d.className = "li";
+  d.innerHTML = '<span class="d" style="background:' + st.color + ';color:' + st.color + '"></span><span class="nm">' + cat.replace("类", "") + '</span><span class="ct">· ' + cnt + '</span>';
+  d.addEventListener("click", function () { hidden[cat] = !hidden[cat]; d.classList.toggle("off"); applyVis(); });
   legendItems.appendChild(d);
 });
-
-/* ── 搜索 ── */
-const searchInput=document.getElementById("search");
-if(searchInput) searchInput.addEventListener("input", e=>{ searchTerm=e.target.value.trim().toLowerCase(); });
-
-/* ── 工具按钮 ── */
-document.getElementById("btnReset").addEventListener("click", ()=>{ animateView(0,0,1); }); // 复位→回归「中国景点」中心
-const bp=document.getElementById("btnPause");
-bp.addEventListener("click", ()=>{ physicsOn=!physicsOn; bp.textContent=physicsOn?"静止":"流动"; });
-
-/* ── 统计 ── */
-document.getElementById("statN").textContent=nodes.filter(n=>n.type==="spot").length;
-document.getElementById("statE").textContent=nodes.filter(n=>n.type==="city").length;
+var si = document.getElementById("search");
+if (si) si.addEventListener("input", function (e) {
+  searchTerm = e.target.value.trim().toLowerCase(); applyVis();
+  if (searchTerm) {
+    var m = spots.filter(function (s) { return !hidden[s.cat] && s.name.toLowerCase().indexOf(searchTerm) >= 0; })[0];
+    if (m) { selectedSpot = null; setFocus(m); focusSpot(m); }  // 搜索 → 转到该景区
+  } else setFocus(null);
+});
+document.getElementById("btnReset").addEventListener("click", function () { focusQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.15, 0.4, 0)); focusN = 0; camTween = { z0: camera.position.z, z1: 320, t0: performance.now() }; });
+var bp = document.getElementById("btnPause");
+bp.addEventListener("click", function () { paused = !paused; bp.textContent = paused ? "自转" : "静止"; });
+document.getElementById("statN").textContent = spots.length;
+document.getElementById("statE").textContent = cityCount;
 })();

@@ -41,6 +41,17 @@ function enhanceStyleSelects() {
 function init() {
   enhanceStyleSelects();
   renderFx();
+  // 灵感墙点图放大（灯箱）
+  var lb = document.createElement('div'); lb.className = 'fx-lightbox'; lb.innerHTML = '<img alt="">';
+  document.body.appendChild(lb);
+  lb.addEventListener('click', function () { lb.classList.remove('show'); });
+  var fxEl = document.getElementById('stageFx');
+  if (fxEl) fxEl.addEventListener('click', function (e) {
+    var card = e.target.closest ? e.target.closest('.fx-card') : null;
+    if (!card) return;
+    var img = card.querySelector('img'); if (!img) return;
+    lb.querySelector('img').src = img.src; lb.classList.add('show');
+  });
   var spot = (new URLSearchParams(location.search).get('spot') || '').trim();
   if (spot && spot.length <= 40) startFromSpot(spot);   // 从星图带景点进来
   document.getElementById('inputText').addEventListener('input', updateCharCount);

@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+<canvas id="fxCanvas"></canvas>
+<div id="warpArrive" class="warp-arrive"></div>
 
 <header class="topbar">
   <a class="topbar-back" href="/">← 景点星图</a>
@@ -112,9 +114,19 @@
   </main>
 </div>
 
+<script src="/static/js/fx.js"></script>
 <script src="/static/js/utils.js"></script>
 <script src="/static/js/render.js"></script>
 <script src="/static/js/entities.js"></script>
 <script src="/static/js/main.js"></script>
+<script>
+  // 从星图穿越而来：播放到达收束动画
+  if (new URLSearchParams(location.search).get('from') === 'atlas') {
+    var wa = document.getElementById('warpArrive');
+    if (wa) { wa.classList.add('play'); setTimeout(function () { wa.style.display = 'none'; }, 900); }
+  } else {
+    var wa2 = document.getElementById('warpArrive'); if (wa2) wa2.style.display = 'none';
+  }
+</script>
 </body>
 </html>
