@@ -1,4 +1,4 @@
 .env
 __pycache__/
 *.pyc
-static/media/
+# static/media/ 不再忽略：让下载好的景点配图/头像随仓库提交，别的电脑 clone 即有缓存
